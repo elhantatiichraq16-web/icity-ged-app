@@ -256,3 +256,37 @@ describe('API du courriel', () => {
     expect(enBase.motDePasse).not.toBe('mot-de-passe-application');
   });
 });
+
+describe('la page « Arrivées »', () => {
+  it('ne montre pas une pièce confidentielle à qui ne la voit pas', async () => {
+    // « Ce qui vient d'arriver » n'est pas une exception au cloisonnement :
+    // un lecteur ne doit pas apprendre l'existence d'une pièce confidentielle
+    // parce qu'elle est récente (§8).
+    await db.document.create({
+      data: { titre: 'Note confidentielle', source: 'versement', sha256: 'f'.repeat(64), taille: BigInt(1), confidentialite: 'confidentiel' },
+    });
+    await db.document.create({
+      data: { titre: 'Pièce ordinaire', source: 'versement', sha256: 'e'.repeat(64), taille: BigInt(1), confidentialite: 'interne' },
+    });
+
+    const lecteur = await creerUtilisateur('lecteur');
+    const requete = en(app, await connecter(app, lecteur.email));
+    const arrivees = (await requete('GET', '/api/arrivees')).json();
+
+    const titres = arrivees.map((a) => a.titre);
+    expect(titres).toContain('Pièce ordinaire');
+    expect(titres).not.toContain('Note confidentielle');
+  });
+
+  it('montre à celui qui l’a versée sa propre pièce confidentielle', async () => {
+    const chef = await creerUtilisateur('chef_projet');
+    await db.document.create({
+      data: { titre: 'Ma note', source: 'versement', sha256: 'd'.repeat(64), taille: BigInt(1), confidentialite: 'confidentiel', verseParId: chef.id },
+    });
+
+    const requete = en(app, await connecter(app, chef.email));
+    const arrivees = (await requete('GET', '/api/arrivees')).json();
+
+    expect(arrivees.map((a) => a.titre)).toContain('Ma note');
+  });
+});

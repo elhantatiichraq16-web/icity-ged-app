@@ -3,6 +3,7 @@
  * rattachement manuel, et les échanges d'un client ou d'un marché.
  */
 import { z } from 'zod';
+import { confidentialitesVisibles } from '@icity/commun/droits';
 import { db } from '../db.js';
 import { ErreurHttp, introuvable, valider } from '../erreurs.js';
 import { exiger, exigerConnexion } from '../plugins/authentification.js';
@@ -373,7 +374,17 @@ export default async function routesCourriel(app) {
   app.get('/api/arrivees', async (requete) => {
     const depuis = new Date(Date.now() - 86_400_000);
     const documents = await db.document.findMany({
-      where: { supprimeLe: null, creeLe: { gte: depuis } },
+      where: {
+        supprimeLe: null,
+        creeLe: { gte: depuis },
+        // Une pièce confidentielle n'apparaît pas ici davantage qu'ailleurs :
+        // « ce qui vient d'arriver » n'est pas une exception au cloisonnement
+        // (§8). Celui qui l'a versée la voit toujours.
+        OR: [
+          { confidentialite: { in: confidentialitesVisibles(requete.utilisateur.role.code) } },
+          { verseParId: requete.utilisateur.id },
+        ],
+      },
       include: { typeDocument: true, marche: true, client: true },
       orderBy: { creeLe: 'desc' },
       take: 50,
