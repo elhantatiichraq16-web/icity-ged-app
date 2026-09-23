@@ -1,0 +1,24 @@
+{
+  "name": "@icity/commun",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Règles partagées entre le serveur et les écrans : rôles, droits, validation",
+  "type": "module",
+  "exports": {
+    "./roles": "./src/roles.js",
+    "./droits": "./src/droits.js",
+    "./schemas": "./src/schemas.js",
+    "./marches": "./src/marches.js",
+    "./circuit": "./src/circuit.js"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@casl/ability": "^7.0.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.1"
+  }
+}

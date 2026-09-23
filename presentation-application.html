@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>iCity GED — Présentation de l'application</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 15mm 14mm;
+      }
+
+      :root {
+        --encre: #14202b;
+        --encre-2: #4a5b68;
+        --encre-3: #7b8b98;
+        --trait: #d7dee4;
+        --cyan: #0e8296;
+        --voile: #eef5f7;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Arial, sans-serif;
+        font-size: 10.5pt;
+        line-height: 1.5;
+        color: var(--encre);
+      }
+
+      /* ── Couverture ── */
+      .couverture {
+        height: 247mm;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        break-after: page;
+      }
+
+      .couverture h1 {
+        font-size: 30pt;
+        margin: 0 0 6pt;
+        letter-spacing: -0.5pt;
+      }
+
+      .couverture .accroche {
+        font-size: 13pt;
+        color: var(--encre-2);
+        margin: 0 0 24pt;
+      }
+
+      .couverture .filet {
+        width: 70pt;
+        height: 3pt;
+        background: var(--cyan);
+        margin-bottom: 24pt;
+      }
+
+      .couverture dl {
+        margin: 0;
+        font-size: 10.5pt;
+      }
+
+      .couverture dt {
+        color: var(--encre-3);
+        font-size: 8.5pt;
+        text-transform: uppercase;
+        letter-spacing: 0.5pt;
+        margin-top: 10pt;
+      }
+
+      .couverture dd {
+        margin: 1pt 0 0;
+        font-weight: 600;
+      }
+
+      /* ── Titres ── */
+      h2 {
+        font-size: 15pt;
+        margin: 0 0 3pt;
+        color: var(--encre);
+      }
+
+      h2 .numero {
+        color: var(--cyan);
+        margin-right: 6pt;
+      }
+
+      .chapeau {
+        color: var(--encre-2);
+        margin: 0 0 10pt;
+        font-size: 10pt;
+      }
+
+      /* ── Un écran par page ── */
+      .ecran {
+        break-before: page;
+      }
+
+      .ecran:first-of-type {
+        break-before: auto;
+      }
+
+      figure {
+        margin: 0 0 10pt;
+        border: 1pt solid var(--trait);
+        border-radius: 3pt;
+        overflow: hidden;
+        background: #fff;
+      }
+
+      figure img {
+        display: block;
+        width: 100%;
+      }
+
+      /* Quand la capture manque, la place reste visible et annoncée. */
+      .capture-absente {
+        padding: 34pt 12pt;
+        text-align: center;
+        color: var(--encre-3);
+        font-size: 9pt;
+        background: var(--voile);
+      }
+
+      .points {
+        margin: 0;
+        padding-left: 0;
+        list-style: none;
+      }
+
+      .points li {
+        padding: 4pt 0 4pt 13pt;
+        border-bottom: 0.5pt solid var(--trait);
+        position: relative;
+        font-size: 9.5pt;
+      }
+
+      .points li:last-child {
+        border-bottom: 0;
+      }
+
+      .points li::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 9pt;
+        width: 4pt;
+        height: 4pt;
+        border-radius: 50%;
+        background: var(--cyan);
+      }
+
+      .points b {
+        font-weight: 600;
+      }
+
+      /* ── Encadrés et chiffres ── */
+      .encadre {
+        background: var(--voile);
+        border-left: 2.5pt solid var(--cyan);
+        padding: 8pt 10pt;
+        margin: 10pt 0;
+        font-size: 9.5pt;
+      }
+
+      .encadre p {
+        margin: 0 0 5pt;
+      }
+
+      .encadre p:last-child {
+        margin: 0;
+      }
+
+      .chiffres {
+        display: flex;
+        gap: 6pt;
+        flex-wrap: wrap;
+        margin: 12pt 0;
+      }
+
+      .chiffre {
+        flex: 1 1 74pt;
+        border: 1pt solid var(--trait);
+        border-radius: 3pt;
+        padding: 7pt 8pt;
+      }
+
+      .chiffre b {
+        display: block;
+        font-size: 16pt;
+        color: var(--cyan);
+        line-height: 1.1;
+      }
+
+      .chiffre span {
+        font-size: 8pt;
+        color: var(--encre-2);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 9.5pt;
+        margin: 8pt 0;
+      }
+
+      th {
+        text-align: left;
+        font-size: 8pt;
+        text-transform: uppercase;
+        letter-spacing: 0.4pt;
+        color: var(--encre-3);
+        border-bottom: 1pt solid var(--trait);
+        padding: 4pt 5pt;
+      }
+
+      td {
+        padding: 4.5pt 5pt;
+        border-bottom: 0.5pt solid var(--trait);
+        vertical-align: top;
+      }
+
+      code {
+        font-family: Consolas, monospace;
+        font-size: 9pt;
+        color: var(--encre-2);
+      }
+
+      footer {
+        margin-top: 14pt;
+        padding-top: 8pt;
+        border-top: 1pt solid var(--trait);
+        font-size: 8pt;
+        color: var(--encre-3);
+        text-align: center;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- ══ Couverture ══════════════════════════════════════════════ -->
+    <section class="couverture">
+      <div class="filet"></div>
+      <h1>iCity GED</h1>
+      <p class="accroche">
+        La gestion documentaire des marchés publics, dans une seule application
+      </p>
+
+      <dl>
+        <dt>Société</dt>
+        <dd>iCity — branche Smart City d'ABA Technology</dd>
+        <dt>Auteure</dt>
+        <dd>Ichrak Elhantati</dd>
+        <dt>Date</dt>
+        <dd>23 septembre 2026</dd>
+      </dl>
+
+      <div class="chiffres" style="margin-top: 30pt">
+        <div class="chiffre"><b>194</b><span>documents</span></div>
+        <div class="chiffre"><b>12</b><span>marchés</span></div>
+        <div class="chiffre"><b>34</b><span>clients</span></div>
+        <div class="chiffre"><b>20</b><span>écrans</span></div>
+        <div class="chiffre"><b>281</b><span>tests</span></div>
+      </div>
+
+      <div class="encadre">
+        <p>
+          <strong>Ce que remplace cette application.</strong> Une installation
+          Paperless-ngx sous Docker, un portail en Python et une vingtaine de
+          scripts séparés. Trop générique pour des marchés publics, trop lourde
+          pour le poste, et éclatée entre plusieurs outils.
+        </p>
+        <p>
+          Tout tient désormais dans un seul logiciel, qui connaît le métier : la
+          phase d'un marché, les pièces qu'il attend, le circuit de validation,
+          le rattachement des courriels.
+        </p>
+      </div>
+    </section>
+
+    <!-- ══ Ce que fait l'application ═══════════════════════════════ -->
+    <section>
+      <h2><span class="numero">1</span>Ce que fait l'application</h2>
+      <p class="chapeau">
+        Le parcours d'une pièce, de son arrivée à son archivage.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 26%">Étape</th>
+            <th>Ce qui se passe</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><b>Elle arrive</b></td>
+            <td>
+              Versée à la main, reçue par courriel, ou envoyée par le copieur.
+              Dans les trois cas, elle entre par le même chemin.
+            </td>
+          </tr>
+          <tr>
+            <td><b>Elle est reconnue</b></td>
+            <td>
+              Son empreinte SHA-256 est calculée : un fichier déjà au fonds est
+              refusé au bit près, et l'original est montré.
+            </td>
+          </tr>
+          <tr>
+            <td><b>Elle est lue</b></td>
+            <td>
+              Un PDF né d'un traitement de texte porte déjà son texte. Un scan
+              passe par l'OCR, en français et en arabe.
+            </td>
+          </tr>
+          <tr>
+            <td><b>Elle est classée</b></td>
+            <td>
+              La référence du marché, le client et le type sont déduits du texte
+              — proposés à la validation, jamais écrits sans accord.
+            </td>
+          </tr>
+          <tr>
+            <td><b>Elle fait avancer le marché</b></td>
+            <td>
+              Un ordre de service verse le marché en exécution ; une mainlevée le
+              clôt. La phase se calcule, elle ne se saisit pas.
+            </td>
+          </tr>
+          <tr>
+            <td><b>Elle se retrouve</b></td>
+            <td>
+              Par la recherche plein texte, avec les passages où les mots
+              apparaissent.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="encadre">
+        <p>
+          <strong>Une contrainte a façonné le logiciel.</strong> Le poste dispose
+          de 3,7 Go de mémoire. C'est ce qui impose la lecture d'un document à la
+          fois, page après page, et ce qui a écarté les solutions plus lourdes —
+          Elasticsearch, Docker, un service d'OCR distant.
+        </p>
+      </div>
+    </section>
+
+    <!-- ══ Les écrans ══════════════════════════════════════════════ -->
+    <section class="ecran">
+      <h2><span class="numero">2</span>Tableau de bord</h2>
+      <p class="chapeau">
+        L'état du fonds en un écran : ce qui avance, ce qui bloque, ce qui reste
+        à traiter.
+      </p>
+      <figure>
+        <img src="captures/1-tableau-bord.png" alt="Tableau de bord d'iCity GED" />
+      </figure>
+      <ul class="points">
+        <li><b>Marchés par phase</b> — attente d'OS, en exécution, réception provisoire, caution, clôturé.</li>
+        <li><b>Taux de rattachement</b> — la part des pièces qui appartiennent à une affaire : la mesure de santé du fonds.</li>
+        <li><b>Alertes</b> — échéances dépassées, cautions non restituées, marchés qui attendent leur ordre de service.</li>
+        <li><b>Tous les chiffres sont calculés côté serveur</b> : deux écrans ne peuvent pas afficher deux valeurs différentes.</li>
+      </ul>
+    </section>
+
+    <section class="ecran">
+      <h2><span class="numero">3</span>Marchés</h2>
+      <p class="chapeau">
+        Chaque affaire, sa phase déduite des pièces versées, et ce qui manque à
+        son dossier.
+      </p>
+      <figure>
+        <img src="captures/2-marches.png" alt="Liste des marchés" />
+      </figure>
+      <ul class="points">
+        <li><b>La phase n'est jamais saisie</b> — elle se déduit des pièces présentes, ce qui interdit qu'elle mente.</li>
+        <li><b>Les colonnes OS, BL, PV, attestation, mainlevée</b> disent d'un coup d'œil où en est le dossier.</li>
+        <li><b>Un clic sur une coche</b> ouvre le document correspondant.</li>
+        <li><b>Un fichier déposé sur une case vide</b> se verse au bon endroit : le marché vient de la ligne, le type de la colonne.</li>
+        <li><b>Les pièces manquantes</b> ne sont réclamées qu'au stade atteint : on ne demande pas un PV définitif à un marché qui démarre.</li>
+      </ul>
+    </section>
+
+    <section class="ecran">
+      <h2><span class="numero">4</span>Documents</h2>
+      <p class="chapeau">Toutes les pièces du fonds, filtrables et classables.</p>
+      <figure>
+        <img src="captures/3-documents.png" alt="Liste des documents" />
+      </figure>
+      <ul class="points">
+        <li><b>Filtres</b> par marché, type et état de lecture.</li>
+        <li><b>Sélection multiple</b> pour mettre plusieurs pièces en corbeille d'un geste.</li>
+        <li><b>État de lecture</b> visible sur chaque ligne : texte déjà présent, lu par l'OCR, en attente, illisible.</li>
+        <li><b>La confidentialité filtre la liste</b> : une pièce confidentielle n'apparaît pas à qui n'a pas le droit de la voir.</li>
+      </ul>
+    </section>
+
+    <section class="ecran">
+      <h2><span class="numero">5</span>Fiche document</h2>
+      <p class="chapeau">
+        Le document à gauche, ce que l'application en sait à droite.
+      </p>
+      <figure>
+        <img src="captures/4-fiche-document.png" alt="Fiche d'un document avec la visionneuse" />
+      </figure>
+      <ul class="points">
+        <li><b>Visionneuse PDF intégrée</b> — pas besoin d'ouvrir un autre logiciel.</li>
+        <li><b>Le texte lu</b> s'affiche à côté : on vérifie ce que la machine a compris.</li>
+        <li><b>Circuit de validation</b> — brouillon, à contrôler, à valider, validé, archivé.</li>
+        <li><b>Mise en corbeille</b> avec confirmation : la pièce reste trente jours, restaurable.</li>
+      </ul>
+    </section>
+
+    <section class="ecran">
+      <h2><span class="numero">6</span>Recherche</h2>
+      <p class="chapeau">
+        Dans les titres et dans le texte lu, y compris celui des scans.
+      </p>
+      <figure>
+        <img src="captures/5-recherche.png" alt="Écran de recherche avec des résultats" />
+      </figure>
+      <ul class="points">
+        <li><b>Extraits surlignés</b> — les passages où les mots apparaissent, pour juger sans ouvrir.</li>
+        <li><b>Filtres avec compteurs</b> — par marché, client, type, année.</li>
+        <li><b>Sans Elasticsearch</b> : la base de données s'en charge, ce qui tient sur ce poste.</li>
+        <li><b>Les références se cherchent entières</b> : « 23C/2017/TGR » n'est pas coupé en trois mots.</li>
+      </ul>
+    </section>
+
+    <section class="ecran">
+      <h2><span class="numero">7</span>Courriel</h2>
+      <p class="chapeau">
+        Les échanges avec les clients, et ce qui arrive du copieur.
+      </p>
+      <figure>
+        <img src="captures/6-courriel.png" alt="Écran courriel" />
+      </figure>
+      <ul class="points">
+        <li><b>Relève automatique</b> d'une boîte Gmail, avec reconnexion après coupure réseau.</li>
+        <li><b>Chaque pièce jointe devient un document</b>, rattaché au même marché que le message.</li>
+        <li><b>Écrire et répondre</b> depuis l'application : la réponse se range dans le fil chez le client.</li>
+        <li><b>Joindre une pièce du fonds</b> sans la dupliquer — on sait ce qui est parti, à qui et quand.</li>
+        <li><b>Scanner → courriel → plateforme</b> : une pièce scannée au copieur entre dans le fonds en quelques minutes.</li>
+      </ul>
+    </section>
+
+    <section class="ecran">
+      <h2><span class="numero">8</span>À vérifier</h2>
+      <p class="chapeau">
+        Ce que la machine ne peut pas trancher seule.
+      </p>
+      <figure>
+        <img src="captures/7-a-verifier.png" alt="Écran À vérifier" />
+      </figure>
+      <ul class="points">
+        <li><b>Doublons probables</b> — des pièces qui se ressemblent sans être identiques, avec un score.</li>
+        <li><b>Rescans</b> — un scan refait du même lot, à arbitrer.</li>
+        <li><b>Attestations orphelines</b> — une attestation dont le contrat manque.</li>
+        <li><b>Corbeille</b> — trente jours avant l'effacement définitif, restaurable jusqu'au bout.</li>
+      </ul>
+    </section>
+
+    <section class="ecran">
+      <h2><span class="numero">9</span>Lecture automatique (OCR)</h2>
+      <p class="chapeau">
+        L'écran qui dit où en est la lecture des scans, et ce qu'elle vaut.
+      </p>
+      <figure>
+        <img src="captures/8-parametres-ocr.png" alt="Paramètres OCR" />
+      </figure>
+      <ul class="points">
+        <li><b>Tesseract 5.4</b>, avec le français et l'arabe — les marchés marocains mêlent les deux.</li>
+        <li><b>La confiance est mesurée, pas estimée</b> : 84 % sur un décompte scanné réel, d'après Tesseract lui-même.</li>
+        <li><b>Un document à la fois</b>, page après page — c'est ce qui tient dans 3,7 Go de mémoire.</li>
+        <li><b>« Illisible » n'est pas « en échec »</b> : une page peut être une photo ou un plan, sans que rien n'ait cassé.</li>
+        <li><b>Sans Tesseract installé</b>, l'écran le dit franchement et la file attend : rien n'est perdu.</li>
+      </ul>
+    </section>
+
+    <!-- ══ Technique ═══════════════════════════════════════════════ -->
+    <section class="ecran">
+      <h2><span class="numero">10</span>Comment c'est construit</h2>
+      <p class="chapeau">
+        Les choix techniques, et ce qui les a dictés.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 30%">Brique</th>
+            <th>Choix et raison</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><b>Écrans</b></td>
+            <td>React 19 — 20 écrans, mode sombre, utilisable au clavier.</td>
+          </tr>
+          <tr>
+            <td><b>Serveur</b></td>
+            <td>Node 22 et Fastify — 76 routes, léger sur un poste modeste.</td>
+          </tr>
+          <tr>
+            <td><b>Base</b></td>
+            <td>18 tables. La recherche plein texte est faite par la base, sans moteur séparé.</td>
+          </tr>
+          <tr>
+            <td><b>Fichiers</b></td>
+            <td>
+              Sur le disque, sous un nom aléatoire, hors du dossier public. La base
+              ne garde que le chemin : 377 Mo de PDF n'ont rien à y faire.
+            </td>
+          </tr>
+          <tr>
+            <td><b>Lecture</b></td>
+            <td>Poppler pour le texte déjà présent, Tesseract pour les scans.</td>
+          </tr>
+          <tr>
+            <td><b>Courriel</b></td>
+            <td>IMAP en écoute permanente pour recevoir, SMTP pour répondre.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2 style="margin-top: 16pt; font-size: 12.5pt">Ce qui protège les données</h2>
+      <ul class="points">
+        <li><b>Sept rôles et quatre niveaux de confidentialité</b> — un document n'est visible que selon le rôle, et cette règle s'applique aussi à la suppression.</li>
+        <li><b>Double authentification</b> disponible, avec codes de secours.</li>
+        <li><b>Les mots de passe d'application sont chiffrés</b> en base, jamais écrits en clair.</li>
+        <li><b>Journal d'audit</b> — qui a fait quoi, quand, depuis quelle adresse.</li>
+        <li><b>Rien ne s'efface d'un clic</b> : la corbeille garde trente jours.</li>
+        <li><b>281 tests automatisés</b> vérifient les règles métier et les droits à chaque modification.</li>
+      </ul>
+
+      <div class="encadre">
+        <p>
+          <strong>L'application tourne en local.</strong> Les données ne quittent
+          jamais le poste : ni base hébergée, ni stockage en ligne. C'est un choix,
+          pas une limite technique — il s'agit de marchés publics réels.
+        </p>
+      </div>
+    </section>
+
+    <footer>
+      iCity GED — présentation établie le 23 septembre 2026 · les chiffres portent sur le fonds réel
+    </footer>
+  </body>
+</html>

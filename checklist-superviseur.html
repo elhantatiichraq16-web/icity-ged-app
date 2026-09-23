@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>iCity GED — Grille de vérification</title>
+    <style>
+      /* Une page à imprimer : marges réelles, pas de fond coloré à l'encre. */
+      @page {
+        size: A4;
+        margin: 16mm 14mm;
+      }
+
+      :root {
+        --encre: #14202b;
+        --encre-2: #4a5b68;
+        --encre-3: #7b8b98;
+        --trait: #d7dee4;
+        --cyan: #0e8296;
+        --voile: #eef5f7;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Arial, sans-serif;
+        font-size: 10.5pt;
+        line-height: 1.45;
+        color: var(--encre);
+      }
+
+      header {
+        border-bottom: 2.5pt solid var(--cyan);
+        padding-bottom: 8pt;
+        margin-bottom: 14pt;
+      }
+
+      h1 {
+        margin: 0 0 3pt;
+        font-size: 19pt;
+        letter-spacing: -0.2pt;
+      }
+
+      .sous-titre {
+        color: var(--encre-2);
+        font-size: 10pt;
+      }
+
+      .identite {
+        margin-top: 10pt;
+        display: flex;
+        gap: 18pt;
+        flex-wrap: wrap;
+        font-size: 9.5pt;
+        color: var(--encre-2);
+      }
+
+      .identite span strong {
+        color: var(--encre);
+      }
+
+      h2 {
+        font-size: 12.5pt;
+        margin: 16pt 0 7pt;
+        padding-bottom: 3pt;
+        border-bottom: 1pt solid var(--trait);
+      }
+
+      h2 .compteur {
+        float: right;
+        font-size: 9pt;
+        font-weight: normal;
+        color: var(--encre-3);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 4pt;
+      }
+
+      th {
+        text-align: left;
+        font-size: 8pt;
+        text-transform: uppercase;
+        letter-spacing: 0.4pt;
+        color: var(--encre-3);
+        border-bottom: 1pt solid var(--trait);
+        padding: 4pt 5pt;
+        font-weight: 600;
+      }
+
+      td {
+        padding: 5pt;
+        border-bottom: 0.5pt solid var(--trait);
+        vertical-align: top;
+      }
+
+      /* Les cases à cocher sont dessinées : elles s'impriment à coup sûr,
+         là où un caractère de police peut manquer. */
+      .case {
+        width: 9pt;
+        height: 9pt;
+        border: 1pt solid var(--encre-2);
+        border-radius: 1.5pt;
+        display: inline-block;
+      }
+
+      .col-case {
+        width: 22pt;
+        text-align: center;
+      }
+
+      .col-note {
+        width: 26%;
+        border-left: 0.5pt solid var(--trait);
+      }
+
+      .fonction {
+        font-weight: 600;
+      }
+
+      .detail {
+        display: block;
+        font-size: 8.5pt;
+        color: var(--encre-2);
+        margin-top: 1pt;
+      }
+
+      .ou {
+        font-size: 8.5pt;
+        color: var(--encre-3);
+        white-space: nowrap;
+      }
+
+      .encadre {
+        background: var(--voile);
+        border-left: 2.5pt solid var(--cyan);
+        padding: 8pt 10pt;
+        margin: 10pt 0 14pt;
+        font-size: 9.5pt;
+      }
+
+      .encadre p {
+        margin: 0 0 5pt;
+      }
+
+      .encadre p:last-child {
+        margin-bottom: 0;
+      }
+
+      .chiffres {
+        display: flex;
+        gap: 6pt;
+        flex-wrap: wrap;
+        margin: 10pt 0 14pt;
+      }
+
+      .chiffre {
+        flex: 1 1 78pt;
+        border: 1pt solid var(--trait);
+        border-radius: 3pt;
+        padding: 6pt 8pt;
+      }
+
+      .chiffre b {
+        display: block;
+        font-size: 15pt;
+        color: var(--cyan);
+        line-height: 1.1;
+      }
+
+      .chiffre span {
+        font-size: 8pt;
+        color: var(--encre-2);
+      }
+
+      .reserve {
+        color: #9a6b15;
+        font-weight: 600;
+      }
+
+      .signature {
+        margin-top: 18pt;
+        padding-top: 10pt;
+        border-top: 1pt solid var(--trait);
+        display: flex;
+        gap: 20pt;
+      }
+
+      .signature div {
+        flex: 1;
+      }
+
+      .ligne-signature {
+        border-bottom: 0.5pt solid var(--encre-3);
+        height: 26pt;
+        margin-top: 3pt;
+      }
+
+      .etiquette {
+        font-size: 8.5pt;
+        color: var(--encre-2);
+      }
+
+      footer {
+        margin-top: 12pt;
+        font-size: 8pt;
+        color: var(--encre-3);
+        text-align: center;
+      }
+
+      /* Une section ne doit pas se couper entre son titre et sa table. */
+      section {
+        break-inside: avoid;
+      }
+
+      .saut {
+        break-before: page;
+      }
+    </style>
+  </head>
+
+  <body>
+    <header>
+      <h1>iCity GED — Grille de vérification</h1>
+      <p class="sous-titre">
+        Gestion des dossiers de marchés publics — iCity / ABA Technology
+      </p>
+      <div class="identite">
+        <span><strong>Auteure :</strong> Ichrak Elhantati</span>
+        <span><strong>Date :</strong> 23 septembre 2026</span>
+        <span><strong>Superviseur :</strong> ............................</span>
+      </div>
+    </header>
+
+    <div class="chiffres">
+      <div class="chiffre"><b>13 760</b><span>lignes de code</span></div>
+      <div class="chiffre"><b>20</b><span>écrans</span></div>
+      <div class="chiffre"><b>76</b><span>routes API</span></div>
+      <div class="chiffre"><b>18</b><span>tables</span></div>
+      <div class="chiffre"><b>281</b><span>tests automatisés</span></div>
+      <div class="chiffre"><b>194</b><span>documents réels</span></div>
+    </div>
+
+    <div class="encadre">
+      <p>
+        <strong>Comment lire cette grille.</strong> La première partie liste ce que
+        l'application fait aujourd'hui, à vérifier écran par écran. La seconde
+        liste ce qui reste à faire, pour que le choix des priorités vous revienne.
+      </p>
+      <p>
+        L'application tourne en local sur <span class="ou">http://127.0.0.1:5173</span>.
+        Les chiffres ci-dessus portent sur le fonds réel d'iCity, pas sur des
+        données de démonstration.
+      </p>
+    </div>
+
+    <!-- ══ Ce qui est fait ══════════════════════════════════════════ -->
+    <section>
+      <h2>1 · Authentification et rôles <span class="compteur">phase 1</span></h2>
+      <table>
+        <thead>
+          <tr>
+            <th class="col-case">✓</th>
+            <th>Fonction</th>
+            <th class="col-note">Observations</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Connexion par mot de passe</span>
+              <span class="detail">Limitation des tentatives ; mot de passe oublié par courriel.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Double authentification (2FA)</span>
+              <span class="detail">Application d'authentification, codes de secours.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Sept rôles, avec droits distincts</span>
+              <span class="detail">Lecteur, achats, commercial AO, chef de projet, responsable documentaire, directeur, administrateur.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Quatre niveaux de confidentialité</span>
+              <span class="detail">Public, interne, restreint, confidentiel — un document n'est visible que selon le rôle.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Invitation d'un utilisateur par courriel</span>
+              <span class="detail">Le compte se crée sans que personne saisisse un mot de passe à sa place.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>2 · Marchés et clients <span class="compteur">phase 2</span></h2>
+      <table>
+        <thead>
+          <tr>
+            <th class="col-case">✓</th>
+            <th>Fonction</th>
+            <th class="col-note">Observations</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Fiche marché complète</span>
+              <span class="detail">Référence, lot, client, objet, montants, dates, responsable.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Phase calculée, jamais saisie</span>
+              <span class="detail">Déduite des pièces versées : attente d'OS, en exécution, réception provisoire, caution, clôturé.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Pièces manquantes signalées</span>
+              <span class="detail">Seules celles attendues au stade atteint : on ne réclame pas un PV définitif à un marché qui démarre.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Ouvrir une pièce depuis le tableau</span>
+              <span class="detail">Un clic sur la colonne OS, BL ou PV mène au document.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Déposer un fichier dans la case</span>
+              <span class="detail">Le marché vient de la ligne, le type de la colonne : rien à ressaisir.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Référentiels modifiables</span>
+              <span class="detail">21 types de document, 22 étiquettes, 34 clients — un référentiel encore utilisé ne peut pas être supprimé.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Export CSV des marchés</span>
+              <span class="detail">Protégé contre l'injection de formule à l'ouverture dans Excel.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>3 · Versement et lecture automatique <span class="compteur">phases 3 et 4</span></h2>
+      <table>
+        <thead>
+          <tr>
+            <th class="col-case">✓</th>
+            <th>Fonction</th>
+            <th class="col-note">Observations</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Versement avec empreinte SHA-256</span>
+              <span class="detail">Un fichier déjà au fonds est refusé au bit près, et l'original est montré.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Visionneuse PDF intégrée</span>
+              <span class="detail">Le document se lit dans l'application, avec son texte à côté.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">OCR français et arabe</span>
+              <span class="detail">Tesseract 5.4 ; un scan devient cherchable. Confiance mesurée : 84 % sur un décompte réel.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Un document à la fois</span>
+              <span class="detail">Contrainte du poste : 3,7 Go de mémoire. La file se vide toutes les deux minutes.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Classement automatique proposé</span>
+              <span class="detail">Référence du marché, client et type déduits du texte — en suggestion, jamais écrit sans validation.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="saut">
+      <h2>4 · Recherche et pilotage <span class="compteur">phases 5 et 6</span></h2>
+      <table>
+        <thead>
+          <tr>
+            <th class="col-case">✓</th>
+            <th>Fonction</th>
+            <th class="col-note">Observations</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Recherche plein texte</span>
+              <span class="detail">Dans les titres et le texte lu. Sans Elasticsearch : la base s'en charge.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Extraits surlignés</span>
+              <span class="detail">Les passages où les mots apparaissent, pour juger sans ouvrir.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Filtres par marché, client, type, année</span>
+              <span class="detail">Avec le nombre de résultats par filtre.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Tableau de bord</span>
+              <span class="detail">Marchés par phase, versements par mois, ce qui reste à traiter.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>5 · Qualité du fonds <span class="compteur">phase 7</span></h2>
+      <table>
+        <thead>
+          <tr>
+            <th class="col-case">✓</th>
+            <th>Fonction</th>
+            <th class="col-note">Observations</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Doublons probables</span>
+              <span class="detail">Pièces qui se ressemblent sans être identiques, avec un score.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Rescans et attestations orphelines</span>
+              <span class="detail">Un scan refait du même lot ; une attestation dont le contrat manque.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Corbeille de trente jours</span>
+              <span class="detail">Rien n'est effacé d'un clic : tout se restaure pendant un mois.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Suppression groupée</span>
+              <span class="detail">Plusieurs pièces d'un coup, sans contourner les droits de confidentialité.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>6 · Courriel <span class="compteur">phase 8</span></h2>
+      <table>
+        <thead>
+          <tr>
+            <th class="col-case">✓</th>
+            <th>Fonction</th>
+            <th class="col-note">Observations</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Relève automatique d'une boîte Gmail</span>
+              <span class="detail">Mot de passe d'application chiffré ; écoute permanente, avec reconnexion après coupure.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Pièces jointes versées au fonds</span>
+              <span class="detail">Chacune devient un document, rattaché au même marché que le message.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Écrire et répondre à un client</span>
+              <span class="detail">Depuis l'application ; la réponse se range dans le fil chez le client.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Joindre une pièce du fonds</span>
+              <span class="detail">Sans dupliquer le fichier : on sait ce qui est parti, à qui et quand.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Échanges groupés par conversation</span>
+              <span class="detail">Comme dans une boîte mail : la réponse sous la question.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Scanner → courriel → plateforme</span>
+              <span class="detail">Une pièce scannée au copieur arrive dans le fonds en quelques minutes.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>7 · Traçabilité et conservation <span class="compteur">phases 9 et 10</span></h2>
+      <table>
+        <thead>
+          <tr>
+            <th class="col-case">✓</th>
+            <th>Fonction</th>
+            <th class="col-note">Observations</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Circuit de validation</span>
+              <span class="detail">Brouillon, à contrôler, à valider, validé, archivé — chaque étape journalisée.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Versions d'un document</span>
+              <span class="detail">Une pièce corrigée garde son historique.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Journal d'audit</span>
+              <span class="detail">Qui a fait quoi, quand, depuis quelle adresse. Purgé au-delà de deux ans.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Sauvegarde complète</span>
+              <span class="detail">La base <em>et</em> les 377 Mo de fichiers : l'une sans l'autre ne sert à rien.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Restauration</span>
+              <span class="detail">En ligne de commande, volontairement : elle écrase tout.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>8 · Robustesse et confort <span class="compteur">phase 11</span></h2>
+      <table>
+        <thead>
+          <tr>
+            <th class="col-case">✓</th>
+            <th>Fonction</th>
+            <th class="col-note">Observations</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Mode sombre</span>
+              <span class="detail">Suit le réglage du système, ou se force.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Accessibilité</span>
+              <span class="detail">Libellés lus par un lecteur d'écran ; la forme porte l'information, pas seulement la couleur.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Aucune page blanche en cas d'erreur</span>
+              <span class="detail">Un écran qui échoue explique et propose de recharger.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">281 tests automatisés</span>
+              <span class="detail">Règles métier, droits par rôle, doublons, courriel, OCR, sauvegarde.</span>
+            </td>
+            <td class="col-note"></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ══ Ce qui reste ═════════════════════════════════════════════ -->
+    <section class="saut">
+      <h2>Ce qui reste à faire</h2>
+      <div class="encadre">
+        <p>
+          Cette partie est là pour que le choix des priorités vous revienne. Chaque
+          ligne est réalisable ; l'ordre est le nôtre, pas le vôtre.
+        </p>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th class="col-case">✓</th>
+            <th>Proposition</th>
+            <th style="width: 18%">Effort</th>
+            <th class="col-note">Décision</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Extraire les dates d'ordre de service</span>
+              <span class="detail">
+                La colonne « Échéance » est vide sur les 12 marchés : elle se calcule
+                depuis la date d'OS, qui n'est aujourd'hui saisie nulle part. Sans elle,
+                on ne voit pas quel marché arrive à terme.
+              </span>
+            </td>
+            <td>Demi-journée</td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Extraire les montants HT et TTC</span>
+              <span class="detail">
+                Lisibles dans le texte des contrats : 136 montants repérables sur le fonds
+                actuel. Proposés à la validation, comme le classement.
+              </span>
+            </td>
+            <td>Demi-journée</td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Import depuis l'ancien Paperless</span>
+              <span class="detail">
+                Le script existe mais n'a jamais servi : utile seulement s'il reste des
+                pièces à récupérer de l'ancien système.
+              </span>
+            </td>
+            <td>À valider</td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Nettoyer le bruit de l'OCR arabe</span>
+              <span class="detail">
+                14 % des fragments arabes sont du charabia de lecture, qui encombre l'index
+                de recherche sans rien apporter.
+              </span>
+            </td>
+            <td>Deux heures</td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Sauvegarde vers un disque externe</span>
+              <span class="detail">
+                Les sauvegardes vivent sur le même disque que le fonds : contre une panne,
+                elles ne protègent pas. La commande existe, l'automatiser reste à faire.
+              </span>
+            </td>
+            <td>Deux heures</td>
+            <td class="col-note"></td>
+          </tr>
+          <tr>
+            <td class="col-case"><span class="case"></span></td>
+            <td>
+              <span class="fonction">Mise en ligne pour un accès à distance</span>
+              <span class="detail">
+                Étudiée puis écartée : la base, les 377 Mo de fichiers et la relève
+                permanente demandent un hébergement que le gratuit ne couvre pas.
+                <span class="reserve">Implique que des marchés réels quittent le poste.</span>
+              </span>
+            </td>
+            <td>Une journée</td>
+            <td class="col-note"></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Points à connaître</h2>
+      <div class="encadre">
+        <p>
+          <strong>L'application tourne en local.</strong> Elle n'est pas accessible
+          depuis un autre poste, et ne le sera pas sans la mise en ligne ci-dessus.
+          Les données ne quittent jamais la machine.
+        </p>
+        <p>
+          <strong>La relève du courriel est à l'arrêt</strong> depuis que Google a
+          invalidé le mot de passe d'application. Un nouveau mot de passe la rétablit
+          en deux minutes ; le reste de l'application n'est pas affecté.
+        </p>
+        <p>
+          <strong>Le poste est limité</strong> à 3,7 Go de mémoire. C'est ce qui impose
+          la lecture d'un document à la fois, et ce qui a écarté les solutions plus
+          lourdes.
+        </p>
+      </div>
+    </section>
+
+    <div class="signature">
+      <div>
+        <span class="etiquette">Observations générales</span>
+        <div class="ligne-signature"></div>
+        <div class="ligne-signature"></div>
+      </div>
+      <div>
+        <span class="etiquette">Date et signature</span>
+        <div class="ligne-signature"></div>
+      </div>
+    </div>
+
+    <footer>
+      iCity GED — grille établie le 23 septembre 2026 · les chiffres portent sur le fonds réel
+    </footer>
+  </body>
+</html>

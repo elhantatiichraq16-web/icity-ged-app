@@ -1,0 +1,495 @@
+// ════════════════════════════════════════════════════════════════
+//  iCity GED — schéma de la base PostgreSQL
+//
+//  Les modèles portent des noms français (Utilisateur, Marche, Document)
+//  et les tables des noms en minuscules (users, marches, documents) :
+//  @@map relie les deux. Les colonnes suivent la même règle avec @map.
+//
+//  Ce fichier grandit phase après phase : chaque phase ajoute ses tables
+//  par une migration, sans jamais réécrire les précédentes.
+// ════════════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// L'adresse de la base se lit dans prisma.config.js, jamais ici :
+// elle contient un mot de passe.
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Phase 1 : identités et droits ──────────────────────────────
+
+model Role {
+  id           Int           @id @default(autoincrement())
+  code         String        @unique @db.VarChar(40)
+  nom          String        @db.VarChar(80)
+  description  String?       @db.VarChar(255)
+  utilisateurs Utilisateur[]
+
+  @@map("roles")
+}
+
+model Utilisateur {
+  id                Int       @id @default(autoincrement())
+  nom               String    @db.VarChar(120)
+  email             String    @unique @db.VarChar(191)
+  // Vide tant que l'invitation n'est pas acceptée : le compte existe,
+  // mais personne ne peut s'y connecter.
+  motDePasse        String?   @map("mot_de_passe") @db.VarChar(100)
+  roleId            Int       @map("role_id")
+  role              Role      @relation(fields: [roleId], references: [id])
+  avatar            String?   @db.VarChar(255)
+  actif             Boolean   @default(true)
+  derniereConnexion DateTime? @map("derniere_connexion")
+
+  // Double authentification. Le secret est chiffré (AES-256-GCM) : une
+  // copie de la base ne suffit pas à générer les codes.
+  deuxFacteursSecret   String?   @map("deux_facteurs_secret") @db.Text
+  deuxFacteursActiveLe DateTime? @map("deux_facteurs_active_le")
+  // Le dernier pas de temps accepté : un code déjà utilisé ne resservira
+  // pas, même dans ses 30 secondes de validité.
+  deuxFacteursDernierPas Int?    @map("deux_facteurs_dernier_pas")
+  // Codes de secours, stockés hachés comme des mots de passe.
+  codesSecours         Json?     @map("codes_secours")
+
+  creeLe    DateTime @default(now()) @map("cree_le")
+  modifieLe DateTime @updatedAt @map("modifie_le")
+
+  sessions        Session[]
+  jetons          Jeton[]
+  journal         Journal[]
+  marchesSuivis   Marche[]          @relation("MarchesSuivis")
+  documentsVerses Document[]        @relation("DocumentsVerses")
+  versionsDeposees DocumentVersion[] @relation("VersionsDeposees")
+
+  @@map("users")
+}
+
+/// Une connexion ouverte. Le cookie ne contient qu'un jeton aléatoire ;
+/// la base n'en garde que l'empreinte SHA-256. Une copie de la table ne
+/// permet donc pas de se faire passer pour quelqu'un.
+model Session {
+  id               String      @id @db.VarChar(64)
+  utilisateurId    Int         @map("user_id")
+  utilisateur      Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  jetonCsrf        String      @map("jeton_csrf") @db.VarChar(64)
+  // Vrai entre le mot de passe et le code 2FA : la session existe mais
+  // n'ouvre encore rien.
+  attenteDeuxFacteurs Boolean  @default(false) @map("attente_deux_facteurs")
+  seSouvenir       Boolean     @default(false) @map("se_souvenir")
+  ip               String?     @db.VarChar(45)
+  agent            String?     @db.VarChar(255)
+  creeLe           DateTime    @default(now()) @map("cree_le")
+  derniereActivite DateTime    @default(now()) @map("derniere_activite")
+  expireLe         DateTime    @map("expire_le")
+
+  @@index([utilisateurId])
+  @@map("sessions")
+}
+
+/// Jetons à usage unique envoyés par e-mail : invitation d'un nouveau
+/// compte ou réinitialisation du mot de passe. Même mécanique, une seule
+/// table. Seule l'empreinte est stockée.
+model Jeton {
+  id            Int         @id @default(autoincrement())
+  utilisateurId Int         @map("user_id")
+  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  type          String      @db.VarChar(20) // invitation | reinitialisation
+  empreinte     String      @unique @db.VarChar(64)
+  expireLe      DateTime    @map("expire_le")
+  utiliseLe     DateTime?   @map("utilise_le")
+  creeLe        DateTime    @default(now()) @map("cree_le")
+
+  @@index([utilisateurId, type])
+  @@map("jetons")
+}
+
+/// Le journal d'audit : qui, quoi, quand, sur quel objet, avant/après.
+/// On n'y efface jamais rien.
+model Journal {
+  id            Int          @id @default(autoincrement())
+  utilisateurId Int?         @map("user_id")
+  utilisateur   Utilisateur? @relation(fields: [utilisateurId], references: [id], onDelete: SetNull)
+  action        String       @db.VarChar(60)
+  objetType     String?      @map("objet_type") @db.VarChar(40)
+  objetId       Int?         @map("objet_id")
+  avant         Json?
+  apres         Json?
+  commentaire   String?      @db.Text
+  ip            String?      @db.VarChar(45)
+  creeLe        DateTime     @default(now()) @map("cree_le")
+
+  @@index([objetType, objetId])
+  @@index([creeLe])
+  @@map("journal")
+}
+
+// ── Phase 2 : référentiels, clients et marchés ─────────────────
+
+/// Un maître d'ouvrage. « interne » marque INTELIFEX et ABA Technology :
+/// la société émet ses propres PV, elle n'est jamais cliente d'elle-même.
+model Client {
+  id             Int       @id @default(autoincrement())
+  nom            String    @unique @db.VarChar(160)
+  sigle          String?   @db.VarChar(40)
+  /// Les autres orthographes rencontrées, pour la reconnaissance (§7).
+  synonymes      Json?
+  /// Les domaines de messagerie, pour rattacher un mail à son client (§10).
+  domainesEmail  Json?     @map("domaines_email")
+  interne        Boolean   @default(false)
+  /// Le dossier d'origine dans les archives, pour un versement relançable.
+  dossierOrigine String?   @map("dossier_origine") @db.VarChar(191)
+  creeLe         DateTime  @default(now()) @map("cree_le")
+  modifieLe      DateTime  @updatedAt @map("modifie_le")
+
+  marches   Marche[]
+  documents Document[]
+  mails     Mail[]
+
+  @@map("clients")
+}
+
+/// La nature d'une pièce. `ordreCycle` et `pieceAttendue` désignent les six
+/// pièces sur lesquelles se calcule la phase d'un marché (§5).
+model TypeDocument {
+  id            Int     @id @default(autoincrement())
+  nom           String  @unique @db.VarChar(120)
+  code          String  @unique @db.VarChar(10)
+  ordreCycle    Int?    @map("ordre_cycle")
+  pieceAttendue Boolean @default(false) @map("piece_attendue")
+
+  documents Document[]
+
+  @@map("types_documents")
+}
+
+/// Étiquette libre, rangée par famille : validation, criticité,
+/// confidentialité, traitement, patrimoine.
+model Etiquette {
+  id      Int    @id @default(autoincrement())
+  nom     String @unique @db.VarChar(80)
+  couleur String @db.VarChar(9)
+  famille String @db.VarChar(20)
+
+  documents DocumentEtiquette[]
+
+  @@index([famille])
+  @@map("etiquettes")
+}
+
+model Marche {
+  id                   Int     @id @default(autoincrement())
+  /// La référence telle qu'elle s'affiche : la variante la plus complète.
+  reference            String  @db.VarChar(80)
+  /// La clé de regroupement (§5), calculée, jamais saisie : deux lectures
+  /// d'une même affaire tombent dessus et ne font qu'un marché.
+  referenceNormalisee  String  @unique @map("reference_normalisee") @db.VarChar(80)
+  /// Les autres écritures rencontrées pour cette affaire.
+  variantes            Json?
+  clientId             Int?    @map("client_id")
+  client               Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  objet                String? @db.VarChar(255)
+  numeroAo             String? @map("numero_ao") @db.VarChar(60)
+  lot                  String? @db.VarChar(10)
+  montantHt            Decimal? @map("montant_ht") @db.Decimal(14, 2)
+  montantTtc           Decimal? @map("montant_ttc") @db.Decimal(14, 2)
+  dateSignature        DateTime? @map("date_signature") @db.Date
+  dateOs               DateTime? @map("date_os") @db.Date
+  delaiMois            Int?      @map("delai_mois")
+  dateFin              DateTime? @map("date_fin") @db.Date
+  ville                String?   @db.VarChar(80)
+  responsableId        Int?      @map("responsable_id")
+  responsable          Utilisateur? @relation("MarchesSuivis", fields: [responsableId], references: [id], onDelete: SetNull)
+  emplacementPapier    String?   @map("emplacement_papier") @db.VarChar(160)
+  statutAffaire        String?   @map("statut_affaire") @db.VarChar(40)
+  conservation         String?   @db.VarChar(20)
+  signe                Boolean   @default(false)
+  objetTechnique       String?   @map("objet_technique") @db.VarChar(40)
+  /// Le dossier d'origine dans les archives (versement relançable).
+  dossierOrigine       String?   @map("dossier_origine") @db.VarChar(191)
+
+  /// Phase CALCULÉE d'après les pièces présentes (§5) — jamais saisie.
+  /// Recopiée ici pour pouvoir filtrer et trier en SQL ; un observateur la
+  /// recalcule dès qu'un document du marché change.
+  phase                String    @default("attente") @db.VarChar(20)
+
+  creeLe    DateTime @default(now()) @map("cree_le")
+  modifieLe DateTime @updatedAt @map("modifie_le")
+
+  documents Document[]
+  mails     Mail[]
+
+  @@index([clientId])
+  @@index([phase])
+  @@map("marches")
+}
+
+/// Un document du fonds. La phase 3 y ajoutera le fichier, l'empreinte et
+/// le texte OCR ; on garde ici ce qui suffit à rattacher et à compter.
+model Document {
+  id              Int           @id @default(autoincrement())
+  titre           String        @db.VarChar(255)
+  marcheId        Int?          @map("marche_id")
+  marche          Marche?       @relation(fields: [marcheId], references: [id], onDelete: SetNull)
+  clientId        Int?          @map("client_id")
+  client          Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  typeDocumentId  Int?          @map("type_document_id")
+  typeDocument    TypeDocument? @relation(fields: [typeDocumentId], references: [id], onDelete: SetNull)
+  dateDocument    DateTime?     @map("date_document") @db.Date
+
+  // ── Phase 3 : le fichier et sa lecture ──
+  /// Chemin relatif dans le stockage privé (hors du dossier public, §13).
+  cheminOriginal  String?       @map("chemin_original") @db.VarChar(255)
+  /// Le PDF cherchable produit par l'OCR (texte invisible sous l'image).
+  cheminArchive   String?       @map("chemin_archive") @db.VarChar(255)
+  /// Vignette de la première page, pour les listes.
+  cheminVignette  String?       @map("chemin_vignette") @db.VarChar(255)
+  nomOrigine      String?       @map("nom_origine") @db.VarChar(255)
+  /// L'empreinte du fichier : deux fois le même octet à l'octet près est
+  /// refusé au versement (§6).
+  sha256          String?       @unique @db.VarChar(64)
+  taille          BigInt?
+  pages           Int?
+  /// Le texte lu par l'OCR, indexé en FULLTEXT à la phase 5.
+  texteOcr        String?       @map("texte_ocr") @db.Text
+  langue          String?       @db.VarChar(20)
+  /// en_attente | en_cours | fait | echec | non_necessaire
+  statutOcr       String        @default("en_attente") @map("statut_ocr") @db.VarChar(20)
+  ocrPageCourante Int?          @map("ocr_page_courante")
+  ocrConfiance    Int?          @map("ocr_confiance")
+  /// Lot de scan et numéro de page, lus dans le nom du fichier (§6).
+  lotScan         String?       @map("lot_scan") @db.VarChar(40)
+  pageScan        Int?          @map("page_scan")
+  /// en_attente | classe | a_classer — le classement automatique (§7).
+  statutClassement String       @default("en_attente") @map("statut_classement") @db.VarChar(20)
+  objetTechnique  String?       @map("objet_technique") @db.VarChar(40)
+  /// Les champs corrigés à la main, que le classement ne doit plus toucher (§7).
+  champsVerrouilles Json?       @map("champs_verrouilles")
+  /// scan | versement | courriel | import
+  source          String        @default("versement") @db.VarChar(20)
+  /// brouillon | soumis_controle | a_corriger | controle | soumis_validation | valide | officiel | archive
+  etatCircuit     String        @default("brouillon") @map("etat_circuit") @db.VarChar(30)
+  confidentialite String        @default("interne") @db.VarChar(20)
+  criticite       String        @default("courant") @db.VarChar(20)
+  verseParId      Int?          @map("verse_par")
+  versePar        Utilisateur?  @relation("DocumentsVerses", fields: [verseParId], references: [id], onDelete: SetNull)
+  /// Suppression douce : la corbeille garde 30 jours (§9).
+  supprimeLe      DateTime?     @map("supprime_le")
+  creeLe          DateTime      @default(now()) @map("cree_le")
+  modifieLe       DateTime      @updatedAt @map("modifie_le")
+
+  etiquettes  DocumentEtiquette[]
+  suggestions Suggestion[]
+  versions    DocumentVersion[]
+  doublonsA   Doublon[]           @relation("DoublonA")
+  doublonsB   Doublon[]           @relation("DoublonB")
+  piecesJointes PieceJointeMail[]
+
+  @@index([marcheId])
+  @@index([clientId])
+  @@index([typeDocumentId])
+  @@index([supprimeLe])
+  @@index([statutOcr])
+  @@index([lotScan])
+  /// Index plein texte (§11, écran 5) : c'est lui qui rend la recherche
+  /// instantanée sur le texte des 700 pages, sans Elasticsearch.
+  // PostgreSQL n'a pas d'index plein texte déclaratif : la recherche
+  // passe par un index GIN sur un `tsvector`, posé par une migration à la
+  // main (Prisma ne sait pas le décrire ici).
+  @@index([titre])
+  @@map("documents")
+}
+
+model DocumentEtiquette {
+  documentId  Int       @map("document_id")
+  document    Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  etiquetteId Int       @map("etiquette_id")
+  etiquette   Etiquette @relation(fields: [etiquetteId], references: [id], onDelete: Cascade)
+
+  @@id([documentId, etiquetteId])
+  @@map("document_etiquette")
+}
+
+// ── Phase 4 : classement automatique ───────────────────────────
+
+/// Ce que le classement propose pour un document, en attendant qu'un humain
+/// l'accepte ou le corrige (§7). Rien n'est écrit sur le document tant que la
+/// proposition n'est pas acceptée : le classement ne décide jamais seul.
+model Suggestion {
+  id         Int      @id @default(autoincrement())
+  documentId Int      @map("document_id")
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  /// marche | client | type | objet_technique | date_document
+  champ      String   @db.VarChar(30)
+  /// La valeur proposée, lisible (référence, nom du client, code du type).
+  valeur     String   @db.VarChar(191)
+  /// L'identifiant visé quand la valeur désigne une ligne existante.
+  cibleId    Int?     @map("cible_id")
+  /// Ce qui a été lu dans le texte, pour que l'utilisateur puisse juger.
+  raison     String?  @db.Text
+  /// De 0 à 100 : à quel point la lecture est sûre.
+  confiance  Int      @default(50)
+  /// en_attente | acceptee | refusee
+  statut     String   @default("en_attente") @db.VarChar(20)
+  decideePar Int?     @map("decidee_par")
+  decideeLe  DateTime? @map("decidee_le")
+  creeLe     DateTime @default(now()) @map("cree_le")
+
+  @@unique([documentId, champ])
+  @@index([statut])
+  @@map("suggestions")
+}
+
+// ── Phase 7 : doublons et rescans ──────────────────────────────
+
+/// Une paire de documents qui se ressemblent (§9).
+///
+/// L'empreinte ne suffit pas : deux passages du même papier sous le scanner
+/// n'ont jamais les mêmes octets. La ressemblance seule non plus : des pièces
+/// bâties sur le même modèle se ressemblent à 90 %. La décision est donc
+/// humaine — et mémorisée, pour que la paire ne revienne pas.
+model Doublon {
+  id           Int      @id @default(autoincrement())
+  documentAId  Int      @map("document_a_id")
+  documentA    Document @relation("DoublonA", fields: [documentAId], references: [id], onDelete: Cascade)
+  documentBId  Int      @map("document_b_id")
+  documentB    Document @relation("DoublonB", fields: [documentBId], references: [id], onDelete: Cascade)
+  /// Part de vocabulaire commun, de 0 à 100.
+  score        Int
+  /// Ce qui rapproche et ce qui sépare les deux pièces, en clair.
+  raisons      Json?
+  /// en_attente | gardes | supprime_b
+  decision     String   @default("en_attente") @db.VarChar(20)
+  decidePar    Int?     @map("decide_par")
+  decideLe     DateTime? @map("decide_le")
+  creeLe       DateTime @default(now()) @map("cree_le")
+
+  @@unique([documentAId, documentBId])
+  @@index([decision])
+  @@map("doublons")
+}
+
+// ── Phase 8 : courriel ─────────────────────────────────────────
+
+/// Une boîte relevée en IMAP (§10). Le mot de passe d'application est
+/// chiffré en base : une copie du fichier de sauvegarde ne donne pas accès
+/// à la messagerie.
+model CompteMail {
+  id                Int      @id @default(autoincrement())
+  libelle           String   @db.VarChar(120)
+  adresse           String   @unique @db.VarChar(191)
+  serveur           String   @db.VarChar(120)
+  port              Int      @default(993)
+  securite          String   @default("ssl") @db.VarChar(10)
+  motDePasse        String   @map("mot_de_passe") @db.Text
+  /// Le libellé Gmail surveillé. Gmail expose ses libellés à la racine IMAP.
+  dossierSurveille  String   @default("iCity-Documents") @map("dossier_surveille") @db.VarChar(120)
+  /// Le libellé posé après traitement : on ne se fie pas à « non lu » (§10).
+  libelleTraitement String   @default("iCity-Verse") @map("libelle_traitement") @db.VarChar(120)
+  /// Les adresses du copieur et du téléphone (§10 bis).
+  adressesScanner   Json?    @map("adresses_scanner")
+  ageMaxJours       Int      @default(30) @map("age_max_jours")
+  actif             Boolean  @default(true)
+  derniereReleve    DateTime? @map("derniere_releve")
+  /// Empêche deux relèves simultanées : sinon les pièces jointes entrent en double.
+  releveEnCoursDepuis DateTime? @map("releve_en_cours_depuis")
+  creeLe            DateTime @default(now()) @map("cree_le")
+  modifieLe         DateTime @updatedAt @map("modifie_le")
+
+  mails   Mail[]
+  releves Releve[]
+
+  @@map("comptes_mail")
+}
+
+/// Une relève, pour la cloche et les Paramètres.
+model Releve {
+  id         Int        @id @default(autoincrement())
+  compteId   Int        @map("compte_id")
+  compte     CompteMail @relation(fields: [compteId], references: [id], onDelete: Cascade)
+  debut      DateTime   @default(now())
+  fin        DateTime?
+  mailsLus   Int        @default(0) @map("mails_lus")
+  piecesVersees Int     @default(0) @map("pieces_versees")
+  erreur     String?    @db.Text
+
+  @@index([compteId])
+  @@map("releves")
+}
+
+/// Un message, reçu ou envoyé (§10). Le corps est conservé pour que le
+/// dossier montre la démarche, pas seulement son résultat.
+model Mail {
+  id            Int        @id @default(autoincrement())
+  compteId      Int        @map("compte_id")
+  compte        CompteMail @relation(fields: [compteId], references: [id], onDelete: Cascade)
+  /// recu | envoye | scanner
+  direction     String     @db.VarChar(10)
+  messageId     String     @unique @map("message_id") @db.VarChar(255)
+  inReplyTo     String?    @map("in_reply_to") @db.VarChar(255)
+  referencesMail String?   @map("references_mail") @db.Text
+  /// L'objet normalisé : sans RE, TR, FW, Fwd, Réf, accents ni espaces (§10).
+  fil           String     @db.VarChar(255)
+  expediteur    String     @db.VarChar(255)
+  destinataires Json?
+  date          DateTime
+  objet         String     @db.VarChar(255)
+  corpsTexte    String?    @map("corps_texte") @db.Text
+  /// HTML nettoyé avant stockage, affiché dans une iframe sandbox (§13).
+  corpsHtml     String?    @map("corps_html") @db.Text
+  clientId      Int?       @map("client_id")
+  client        Client?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  marcheId      Int?       @map("marche_id")
+  marche        Marche?    @relation(fields: [marcheId], references: [id], onDelete: SetNull)
+  /// rattache | a_rattacher | ambigu
+  statutRattachement String @default("a_rattacher") @map("statut_rattachement") @db.VarChar(20)
+  creeLe        DateTime   @default(now()) @map("cree_le")
+
+  piecesJointes PieceJointeMail[]
+
+  @@index([fil])
+  @@index([clientId])
+  @@index([marcheId])
+  @@index([statutRattachement])
+  @@map("mails")
+}
+
+/// Une pièce jointe, devenue un document du fonds.
+model PieceJointeMail {
+  id         Int       @id @default(autoincrement())
+  mailId     Int       @map("mail_id")
+  mail       Mail      @relation(fields: [mailId], references: [id], onDelete: Cascade)
+  nom        String    @db.VarChar(255)
+  taille     BigInt?
+  documentId Int?      @map("document_id")
+  document   Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([mailId])
+  @@map("pieces_jointes_mail")
+}
+
+// ── Phase 9 : versions ─────────────────────────────────────────
+
+/// Chaque nouvelle version d'un document, jamais écrasée (§8).
+/// C'est ce qui donne au fonds sa valeur de preuve : la version validée
+/// reste lisible telle qu'elle a été validée.
+model DocumentVersion {
+  id         Int      @id @default(autoincrement())
+  documentId Int      @map("document_id")
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  numero     Int
+  chemin     String   @db.VarChar(255)
+  nomOrigine String?  @map("nom_origine") @db.VarChar(255)
+  sha256     String   @db.VarChar(64)
+  taille     BigInt?
+  pages      Int?
+  auteurId   Int?     @map("auteur_id")
+  auteur     Utilisateur? @relation("VersionsDeposees", fields: [auteurId], references: [id], onDelete: SetNull)
+  motif      String?  @db.VarChar(255)
+  creeLe     DateTime @default(now()) @map("cree_le")
+
+  @@unique([documentId, numero])
+  @@map("document_versions")
+}

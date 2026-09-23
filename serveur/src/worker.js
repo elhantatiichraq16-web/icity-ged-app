@@ -1,0 +1,133 @@
+/**
+ * Le worker : ce qui tourne en fond, à côté du serveur.
+ *
+ *  - relève du courriel toutes les 10 minutes (§10) ;
+ *  - écoute IMAP IDLE quand c'est possible : Gmail prévient dès qu'un message
+ *    arrive, et le document apparaît dans les secondes qui suivent (§10 bis) ;
+ *  - vidage de la corbeille au-delà de 30 jours (§9), chaque nuit.
+ *
+ * Un seul processus, une tâche à la fois : ce PC a 3,7 Go de mémoire (§2).
+ */
+import { execFile } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import cron from 'node-cron';
+import { db } from './db.js';
+import { ecouter, relever, releverTout } from './services/courriel-imap.js';
+import { purgerJournal, viderCorbeille } from './services/entretien.js';
+import { resteALire, tesseractDisponible, traiterFile } from './services/ocr.js';
+
+const journal = console;
+
+/** Met en place l'écoute IDLE des comptes actifs, avec reconnexion. */
+async function ecouterLesComptes() {
+  const comptes = await db.compteMail.findMany({ where: { actif: true } });
+  for (const compte of comptes) {
+    try {
+      await ecouter(compte, {
+        log: journal,
+        surNouveau: (r) => journal.log(`Arrivée : ${r.mailsLus} message(s), ${r.piecesVersees} pièce(s) — ${compte.adresse}`),
+      });
+      journal.log(`Écoute IMAP active sur ${compte.adresse} (${compte.dossierSurveille}).`);
+    } catch (erreur) {
+      // IDLE indisponible : la relève périodique prend le relais (§10 bis).
+      journal.error(`Écoute impossible sur ${compte.adresse} : ${erreur.message}. La relève toutes les 10 minutes suffira.`);
+    }
+  }
+}
+
+journal.log('Worker iCity GED démarré.');
+
+// Dernier filet. Le worker doit survivre à un incident isolé : une coupure
+// réseau ou une pièce jointe malformée ne doit pas l'arrêter, sinon
+// « concurrently -k » emporte aussi le serveur et les écrans.
+process.on('uncaughtException', (erreur) => {
+  journal.error('Erreur non rattrapée (le worker continue) :', erreur?.stack ?? erreur);
+});
+process.on('unhandledRejection', (raison) => {
+  journal.error('Promesse rejetée sans traitement (le worker continue) :', raison?.stack ?? raison);
+});
+
+// L'OCR : un document à la fois, en série. Deux passages ne doivent jamais se
+// croiser — ce PC n'a pas la mémoire pour deux Tesseract (§2).
+let ocrEnCours = false;
+async function viderFileOcr() {
+  if (ocrEnCours) return;
+  ocrEnCours = true;
+  try {
+    const bilan = await traiterFile({ log: journal });
+    if (bilan.ignoree) return; // Tesseract absent : déjà signalé au démarrage.
+    if (bilan.traites) {
+      journal.log(`OCR : ${bilan.traites} document(s) lu(s) — ${bilan.lus} avec texte, ${bilan.illisibles} illisible(s), ${bilan.echecs} en échec.`);
+      const reste = await resteALire();
+      if (reste) journal.log(`OCR : ${reste} document(s) encore en attente.`);
+    }
+  } catch (erreur) {
+    journal.error('File OCR en échec :', erreur.message);
+  } finally {
+    ocrEnCours = false;
+  }
+}
+
+// Toutes les 2 minutes : on vide la file. Un scan arrivé par mail devient
+// ainsi cherchable dans les minutes qui suivent (§10 bis).
+cron.schedule('*/2 * * * *', viderFileOcr);
+
+// Toutes les 10 minutes : la relève de secours, même si IDLE fonctionne.
+cron.schedule('*/10 * * * *', async () => {
+  try {
+    const bilan = await releverTout(journal);
+    const total = bilan.reduce((n, b) => n + (b.mailsLus ?? 0), 0);
+    if (total) journal.log(`Relève : ${total} nouveau(x) message(s).`);
+  } catch (erreur) {
+    journal.error('Relève périodique en échec :', erreur.message);
+  }
+});
+
+// Chaque dimanche à 2 h : la sauvegarde complète, base et fichiers (§13).
+// Elle tourne dans son propre processus : un dump de plusieurs centaines de
+// mégaoctets ne doit pas faire gonfler le worker.
+cron.schedule(
+  '0 2 * * 0',
+  () => {
+    const script = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'sauvegarder.js');
+    execFile(process.execPath, [script], { env: process.env }, (erreur, sortie) => {
+      if (erreur) journal.error('Sauvegarde hebdomadaire en échec :', erreur.message);
+      else journal.log('Sauvegarde hebdomadaire terminée.');
+    });
+  },
+  { timezone: 'Africa/Casablanca' },
+);
+
+// Chaque nuit à 3 h (heure du Maroc) : la corbeille.
+cron.schedule(
+  '0 3 * * *',
+  async () => {
+    await viderCorbeille({ log: journal }).catch((e) => journal.error('Vidage de corbeille :', e.message));
+    await purgerJournal({ log: journal }).catch((e) => journal.error('Purge du journal :', e.message));
+  },
+  { timezone: 'Africa/Casablanca' },
+);
+
+await ecouterLesComptes();
+
+// L'état de l'OCR est dit une fois, au démarrage : sans Tesseract les scans
+// resteront introuvables par la recherche, et il vaut mieux le savoir tout de
+// suite que de chercher pourquoi plus tard.
+const ocr = await tesseractDisponible();
+if (ocr.ok) {
+  journal.log(`OCR prêt (${ocr.version}).`);
+  await viderFileOcr();
+} else {
+  const reste = await resteALire();
+  journal.error(`OCR indisponible : ${ocr.motif}. ${reste} document(s) attendent une lecture ; installez Tesseract puis relancez.`);
+}
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, async () => {
+    await db.$disconnect();
+    process.exit(0);
+  });
+}
+
+export { relever };

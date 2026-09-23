@@ -1,0 +1,200 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { db } from '../src/db.js';
+import { recalculerPhase, recalculerToutesLesPhases } from '../src/services/phase-marche.js';
+import { connecter, creerUtilisateur, en, nouvelleApp, viderBase } from './outils.js';
+
+let app;
+let client;
+
+beforeAll(async () => {
+  app = await nouvelleApp();
+});
+afterAll(async () => {
+  await app.close();
+});
+
+beforeEach(async () => {
+  await db.documentEtiquette.deleteMany();
+  await db.document.deleteMany();
+  await db.marche.deleteMany();
+  await db.client.deleteMany();
+  await db.typeDocument.deleteMany();
+  await viderBase();
+
+  // Les six pièces du cycle suffisent à ces tests.
+  for (const [code, nom, ordre] of [
+    ['OS', 'Ordre de service', 1],
+    ['BL', 'Bon de livraison', 2],
+    ['PVP', 'PV de réception provisoire', 3],
+    ['PVD', 'PV de réception définitive', 4],
+    ['MLV', 'Mainlevée de caution', 6],
+    ['CM', 'Contrat de marché', null],
+  ]) {
+    await db.typeDocument.create({ data: { code, nom, ordreCycle: ordre, pieceAttendue: ordre !== null } });
+  }
+  client = await db.client.create({ data: { nom: 'Trésorerie Générale du Royaume', sigle: 'TGR' } });
+});
+
+async function creerMarche(reference, champs = {}) {
+  return db.marche.create({
+    data: { reference, referenceNormalisee: reference, clientId: client.id, ...champs },
+  });
+}
+
+async function poser(marche, code, champs = {}) {
+  const type = await db.typeDocument.findUniqueOrThrow({ where: { code } });
+  return db.document.create({
+    data: { titre: `${code} de ${marche.reference}`, marcheId: marche.id, clientId: client.id, typeDocumentId: type.id, ...champs },
+  });
+}
+
+describe('phase calculée (§5)', () => {
+  it('part de « en attente d’OS » et suit les pièces versées', async () => {
+    const m = await creerMarche('31/2016');
+    expect(await recalculerPhase(m.id)).toBe('attente');
+
+    await poser(m, 'OS');
+    expect(await recalculerPhase(m.id)).toBe('cours');
+
+    await poser(m, 'PVP');
+    expect(await recalculerPhase(m.id)).toBe('provisoire');
+
+    await poser(m, 'MLV');
+    expect(await recalculerPhase(m.id)).toBe('cloture');
+  });
+
+  it('un contrat ne fait pas avancer le cycle', async () => {
+    const m = await creerMarche('17/2022');
+    await poser(m, 'CM');
+    expect(await recalculerPhase(m.id)).toBe('attente');
+  });
+
+  it('un document en corbeille ne compte plus', async () => {
+    const m = await creerMarche('26/2019');
+    const os = await poser(m, 'OS');
+    expect(await recalculerPhase(m.id)).toBe('cours');
+    await db.document.update({ where: { id: os.id }, data: { supprimeLe: new Date() } });
+    expect(await recalculerPhase(m.id)).toBe('attente');
+  });
+
+  it('recalcule tout le fonds en une passe', async () => {
+    const a = await creerMarche('07/2019');
+    const b = await creerMarche('07/2023');
+    await poser(a, 'OS');
+    await poser(b, 'PVD');
+    expect(await recalculerToutesLesPhases()).toBe(2);
+    expect((await db.marche.findUnique({ where: { id: a.id } })).phase).toBe('cours');
+    expect((await db.marche.findUnique({ where: { id: b.id } })).phase).toBe('caution');
+    // Relancé, plus rien ne change.
+    expect(await recalculerToutesLesPhases()).toBe(0);
+  });
+});
+
+describe('API des marchés', () => {
+  it('rend la phase, les pièces manquantes et l’échéance', async () => {
+    const m = await creerMarche('23A/2017/TGR', { lot: 'A', dateOs: new Date('2017-03-01'), delaiMois: 6 });
+    await poser(m, 'PVP'); // PV provisoire sans OS ni BL
+
+    const u = await creerUtilisateur('lecteur');
+    const requete = en(app, await connecter(app, u.email));
+    const liste = (await requete('GET', '/api/marches')).json();
+
+    expect(liste).toHaveLength(1);
+    expect(liste[0]).toMatchObject({
+      reference: '23A/2017/TGR',
+      phase: 'provisoire',
+      manquantes: ['os', 'bl'],
+      echeance: '2017-09-01',
+      etatEcheance: 'depassee',
+      nbDocuments: 1,
+    });
+    expect(liste[0].client.nom).toBe('Trésorerie Générale du Royaume');
+  });
+
+  it('filtre par phase, par client et sur les seuls incomplets', async () => {
+    const complet = await creerMarche('MAR202200027');
+    await poser(complet, 'OS');
+    const incomplet = await creerMarche('MAR202200096');
+    await poser(incomplet, 'PVD'); // PV définitif sans OS, BL ni PV provisoire
+
+    const u = await creerUtilisateur('chef_projet');
+    const requete = en(app, await connecter(app, u.email));
+
+    expect((await requete('GET', '/api/marches?phase=cours')).json()).toHaveLength(1);
+    expect((await requete('GET', '/api/marches?incomplets=true')).json().map((m) => m.reference)).toEqual(['MAR202200096']);
+    expect((await requete('GET', `/api/marches?clientId=${client.id}`)).json()).toHaveLength(2);
+    expect((await requete('GET', '/api/marches?q=202200096')).json()).toHaveLength(1);
+  });
+
+  it('ne compte pas les pièces qu’un lecteur n’a pas le droit de voir', async () => {
+    const m = await creerMarche('31/2016');
+    await poser(m, 'OS', { confidentialite: 'interne' });
+    await poser(m, 'CM', { confidentialite: 'confidentiel' });
+
+    const lecteur = en(app, await connecter(app, (await creerUtilisateur('lecteur')).email));
+    const directeur = en(app, await connecter(app, (await creerUtilisateur('directeur')).email));
+
+    expect((await lecteur('GET', '/api/marches')).json()[0].nbDocuments).toBe(1);
+    expect((await directeur('GET', '/api/marches')).json()[0].nbDocuments).toBe(2);
+  });
+
+  it('ouvre la fiche avec ses documents', async () => {
+    const m = await creerMarche('17/2022', { objet: 'Vidéosurveillance des tribunaux' });
+    await poser(m, 'OS');
+    const requete = en(app, await connecter(app, (await creerUtilisateur('chef_projet')).email));
+    const fiche = (await requete('GET', `/api/marches/${m.id}`)).json();
+    expect(fiche.objet).toBe('Vidéosurveillance des tribunaux');
+    expect(fiche.documents).toHaveLength(1);
+    expect(fiche.documents[0].type.code).toBe('OS');
+  });
+
+  it('modifie les informations, et le journal garde l’avant/après', async () => {
+    const m = await creerMarche('26/2019');
+    const u = await creerUtilisateur('chef_projet');
+    const requete = en(app, await connecter(app, u.email));
+
+    const r = await requete('PATCH', `/api/marches/${m.id}`, { objet: 'Contrôle d’accès', montantTtc: 1250000, dateOs: '2019-05-01', delaiMois: 4 });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ objet: 'Contrôle d’accès', montantTtc: 1250000, echeance: '2019-09-01' });
+
+    const trace = await db.journal.findFirst({ where: { action: 'marche.modifie', objetId: m.id } });
+    expect(trace.utilisateurId).toBe(u.id);
+    expect(trace.apres).toMatchObject({ objet: 'Contrôle d’accès' });
+  });
+
+  it('refuse la modification à un lecteur, et la phase ne se saisit pas', async () => {
+    const m = await creerMarche('07/2019');
+    const lecteur = en(app, await connecter(app, (await creerUtilisateur('lecteur')).email));
+    expect((await lecteur('PATCH', `/api/marches/${m.id}`, { objet: 'Tentative' })).statusCode).toBe(403);
+
+    const chef = en(app, await connecter(app, (await creerUtilisateur('chef_projet')).email));
+    // « phase » n'est pas un champ modifiable : il est simplement ignoré.
+    await chef('PATCH', `/api/marches/${m.id}`, { phase: 'cloture' });
+    expect((await db.marche.findUnique({ where: { id: m.id } })).phase).toBe('attente');
+  });
+
+  it('liste les clients avec leurs compteurs, et masque les internes', async () => {
+    await creerMarche('31/2016');
+    await db.client.create({ data: { nom: 'INTELIFEX SYSTEMS', interne: true } });
+    const requete = en(app, await connecter(app, (await creerUtilisateur('lecteur')).email));
+
+    const clients = (await requete('GET', '/api/clients')).json();
+    expect(clients.map((c) => c.nom)).toEqual(['Trésorerie Générale du Royaume']);
+    expect(clients[0].nbMarches).toBe(1);
+    expect((await requete('GET', '/api/clients?interne=true')).json()).toHaveLength(2);
+  });
+
+  it('ouvre la fiche client avec ses marchés', async () => {
+    await creerMarche('23A/2017/TGR', { lot: 'A' });
+    await creerMarche('23B/2017/TGR', { lot: 'B' });
+    const requete = en(app, await connecter(app, (await creerUtilisateur('lecteur')).email));
+    const fiche = (await requete('GET', `/api/clients/${client.id}`)).json();
+    expect(fiche.marches).toHaveLength(2);
+    expect(fiche.marches.map((m) => m.lot)).toEqual(['A', 'B']);
+  });
+
+  it('exige une connexion', async () => {
+    expect((await app.inject({ url: '/api/marches' })).statusCode).toBe(401);
+    expect((await app.inject({ url: '/api/clients' })).statusCode).toBe(401);
+  });
+});

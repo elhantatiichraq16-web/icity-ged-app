@@ -1,0 +1,26 @@
+{
+  "name": "icity-ged",
+  "version": "0.1.0",
+  "private": true,
+  "description": "iCity GED — gestion des dossiers de marchés",
+  "type": "module",
+  "workspaces": [
+    "commun",
+    "serveur",
+    "client"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n serveur,client,worker -c cyan,magenta,yellow \"npm run dev -w serveur\" \"npm run dev -w client\" \"npm run worker -w serveur\"",
+    "build": "npm run build -w client",
+    "start": "npm run start -w serveur",
+    "test": "npm test -w commun && npm test -w serveur",
+    "db:migrer": "npm run db:migrer -w serveur",
+    "db:seed": "npm run db:seed -w serveur"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}

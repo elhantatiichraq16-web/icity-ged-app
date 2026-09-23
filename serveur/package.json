@@ -1,0 +1,52 @@
+{
+  "name": "@icity/serveur",
+  "version": "0.1.0",
+  "private": true,
+  "description": "API d'iCity GED : base, droits, fichiers, OCR, courriel",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=.env src/index.js",
+    "start": "node --env-file-if-exists=.env src/index.js",
+    "test": "node scripts/preparer-base-test.js && vitest run",
+    "db:migrer": "prisma migrate dev",
+    "db:deployer": "prisma migrate deploy",
+    "db:seed": "node --env-file-if-exists=.env prisma/seed.js",
+    "postinstall": "prisma generate",
+    "cle": "node -e \"console.log(require('node:crypto').randomBytes(32).toString('base64'))\"",
+    "installer": "node scripts/installer.js",
+    "archives": "node --env-file-if-exists=.env scripts/importer-archives.js",
+    "classer": "node --env-file-if-exists=.env scripts/classer.js",
+    "doublons": "node --env-file-if-exists=.env scripts/doublons.js",
+    "worker": "node --env-file-if-exists=.env src/worker.js",
+    "sauvegarder": "node --env-file-if-exists=.env scripts/sauvegarder.js",
+    "restaurer": "node --env-file-if-exists=.env scripts/restaurer.js",
+    "paperless": "node --env-file-if-exists=.env scripts/importer-paperless.js"
+  },
+  "dependencies": {
+    "@casl/ability": "^7.0.1",
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/helmet": "^13.1.1",
+    "@fastify/multipart": "^10.1.1",
+    "@fastify/rate-limit": "^11.2.0",
+    "@fastify/static": "^10.1.4",
+    "@icity/commun": "*",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "7.10.0",
+    "bcryptjs": "^3.0.3",
+    "fastify": "^5.12.5",
+    "fastify-plugin": "^6.0.0",
+    "file-type": "^22.1.1",
+    "imapflow": "^2.0.5",
+    "mailparser": "^3.9.28",
+    "node-cron": "^4.6.0",
+    "nodemailer": "^10.0.10",
+    "otplib": "^13.5.0",
+    "qrcode": "^1.5.4",
+    "sanitize-html": "^2.17.7",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "prisma": "7.10.0",
+    "vitest": "^5.0.1"
+  }
+}

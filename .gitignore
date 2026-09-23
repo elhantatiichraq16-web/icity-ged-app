@@ -1,0 +1,22 @@
+node_modules/
+dist/
+
+# Secrets : jamais dans Git
+.env
+.env.test
+
+# Fichiers versés, avatars, sauvegardes : données réelles, hors dépôt
+serveur/stockage/
+serveur/stockage-test/
+
+# Résultats de tests
+coverage/
+playwright-report/
+test-results/
+
+*.log
+.DS_Store
+Thumbs.db
+serveur/sauvegardes/
+.~lock.*#
+PROMPT-ICITY-GED.md
