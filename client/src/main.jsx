@@ -8,9 +8,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { FournisseurSession, useSession } from './auth/session.jsx';
 import { Coquille } from './coquille/Coquille.jsx';
 import { PageChoisirMotDePasse, PageConnexion, PageDeuxFacteurs, PageMotDePasseOublie } from './pages/auth/PagesAuth.jsx';
-import { PageAClasser } from './pages/AClasser.jsx';
-import { PageAVerifier } from './pages/AVerifier.jsx';
 import { PageClients, PageFicheClient } from './pages/Clients.jsx';
+import { PageCorbeille } from './pages/Corbeille.jsx';
 import { PageArrivees, PageCourriel } from './pages/Courriel.jsx';
 import { PageFicheMarche } from './pages/FicheMarche.jsx';
 import { PageMarches } from './pages/Marches.jsx';
@@ -119,10 +118,9 @@ const routeur = createBrowserRouter([
               { path: '/marches', element: <PageMarches /> },
               { path: '/marches/:id', element: <PageFicheMarche /> },
               { path: '/documents', element: <PageDocuments /> },
-              { path: '/a-classer', element: <PageAClasser /> },
               { path: '/recherche', element: <PageRecherche /> },
               { path: '/verser', element: <PageVerser /> },
-              { path: '/a-verifier', element: <PageAVerifier /> },
+              { path: '/corbeille', element: <PageCorbeille /> },
               { path: '/courriel', element: <PageCourriel /> },
               { path: '/arrivees', element: <PageArrivees /> },
               { path: '/documents/:id', element: <PageFicheDocument /> },

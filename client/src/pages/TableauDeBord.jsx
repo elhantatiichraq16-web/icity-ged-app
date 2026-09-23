@@ -8,7 +8,7 @@ import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { ArcElement, BarElement, CategoryScale, Chart, LinearScale, LineElement, PointElement, Tooltip } from 'chart.js';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
-import { AlertTriangle, FileText, FolderKanban, Layers, ListChecks, ShieldAlert, Trash2 } from 'lucide-react';
+import { AlertTriangle, FileText, FolderKanban, Layers, ShieldAlert, Trash2 } from 'lucide-react';
 import { ORDRE_PHASES, PHASES } from '@icity/commun/marches';
 import { api } from '../api.js';
 import { useSession } from '../auth/session.jsx';
@@ -112,15 +112,6 @@ export function PageTableauDeBord() {
             style={{ width: `${Math.max(2, tuiles.tauxRattachement)}%` }}
           />
         </div>
-        {tuiles.suggestions > 0 && (
-          <p className="mt-3 text-[13px] text-encre-2">
-            <ListChecks className="mr-1 inline size-4 text-cyan-texte" aria-hidden />
-            <Link to="/a-classer" className="font-medium text-cyan-texte hover:underline">
-              {tuiles.suggestions} propositions de classement
-            </Link>{' '}
-            attendent votre décision — elles feront monter ce taux.
-          </p>
-        )}
       </Carte>
 
       <div className="grid gap-5 lg:grid-cols-[2fr_1fr]">
@@ -265,7 +256,7 @@ export function PageTableauDeBord() {
           </Carte>
 
           {tuiles.corbeille > 0 && (
-            <Link to="/a-verifier/corbeille" className="text-[13px] text-encre-2 hover:underline">
+            <Link to="/corbeille" className="text-[13px] text-encre-2 hover:underline">
               <Trash2 className="mr-1 inline size-4" aria-hidden /> {tuiles.corbeille} document(s) en corbeille
             </Link>
           )}

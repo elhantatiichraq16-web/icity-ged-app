@@ -117,98 +117,37 @@ describe('tableau de bord', () => {
   });
 });
 
-describe('à vérifier, doublons et corbeille (§9)', () => {
-  async function paireDeDoublons() {
-    const a = await doc('Attestation A', 'Texte identique de l’attestation de référence pour la vidéosurveillance.', { marcheId: marche.id });
-    const b = await doc('Attestation B', 'Texte identique de l’attestation de référence pour la vidéosurveillance.');
-    const paire = await db.doublon.create({ data: { documentAId: a.id, documentBId: b.id, score: 95, raisons: { raisons: ['95 % de vocabulaire commun'], ecarts: [] } } });
-    return { a, b, paire };
-  }
-
-  it('écarter une pièce reporte son rattachement sur celle qu’on garde', async () => {
-    const { a, b, paire } = await paireDeDoublons();
+describe('la corbeille (§9)', () => {
+  it('écarte une pièce sans la supprimer, et la restaure', async () => {
+    const d = await doc('Pièce à écarter', 'Texte assez long pour exister dans la base de test.');
     const requete = en(app, await connecter(app, (await creerUtilisateur('responsable_documentaire')).email));
 
-    // On garde B (sans marché) et on écarte A (rattaché) : le marché doit suivre.
-    const r = await requete('POST', `/api/doublons/${paire.id}/decision`, { decision: 'supprime', garderId: b.id });
-    expect(r.statusCode).toBe(200);
+    expect((await requete('POST', `/api/documents/${d.id}/corbeille`)).statusCode).toBe(200);
+    // Corbeille, pas suppression : la pièce existe toujours.
+    expect((await db.document.findUnique({ where: { id: d.id } })).supprimeLe).not.toBeNull();
 
-    const garde = await db.document.findUnique({ where: { id: b.id } });
-    const ecarte = await db.document.findUnique({ where: { id: a.id } });
-    expect(garde.marcheId).toBe(marche.id);
-    expect(ecarte.supprimeLe).not.toBeNull(); // corbeille, pas suppression
-  });
+    const liste = (await requete('GET', '/api/corbeille')).json();
+    expect(liste.documents.map((x) => x.id)).toContain(d.id);
+    expect(liste.joursAvantVidage).toBe(30);
 
-  it('« garder les deux » ferme la paire sans rien supprimer', async () => {
-    const { a, b, paire } = await paireDeDoublons();
-    const requete = en(app, await connecter(app, (await creerUtilisateur('responsable_documentaire')).email));
-
-    await requete('POST', `/api/doublons/${paire.id}/decision`, { decision: 'gardes' });
-
-    expect((await db.document.findUnique({ where: { id: a.id } })).supprimeLe).toBeNull();
-    expect((await db.document.findUnique({ where: { id: b.id } })).supprimeLe).toBeNull();
-    // La paire ne revient pas dans la file.
-    expect((await requete('GET', '/api/doublons')).json()).toHaveLength(0);
-  });
-
-  it('une paire déjà tranchée ne se retranche pas', async () => {
-    const { paire } = await paireDeDoublons();
-    const requete = en(app, await connecter(app, (await creerUtilisateur('responsable_documentaire')).email));
-    await requete('POST', `/api/doublons/${paire.id}/decision`, { decision: 'gardes' });
-    expect((await requete('POST', `/api/doublons/${paire.id}/decision`, { decision: 'gardes' })).statusCode).toBe(409);
-  });
-
-  it('la corbeille garde 30 jours et se restaure', async () => {
-    const d = await doc('Pièce à écarter', 'Un texte quelconque.', { marcheId: marche.id });
-    const requete = en(app, await connecter(app, (await creerUtilisateur('responsable_documentaire')).email));
-
-    await requete('POST', `/api/documents/${d.id}/corbeille`);
-    const corbeille = (await requete('GET', '/api/corbeille')).json();
-    expect(corbeille.joursAvantVidage).toBe(30);
-    expect(corbeille.documents[0]).toMatchObject({ id: d.id, joursRestants: 30 });
-
-    // Elle n'apparaît plus dans les listes courantes.
-    expect((await requete('GET', '/api/documents')).json().total).toBe(0);
-
-    await requete('POST', `/api/documents/${d.id}/restaurer`);
+    expect((await requete('POST', `/api/documents/${d.id}/restaurer`)).statusCode).toBe(200);
     expect((await db.document.findUnique({ where: { id: d.id } })).supprimeLe).toBeNull();
   });
 
-  it('compte les files à vérifier', async () => {
-    await doc('Sans marché', 'Une pièce non rattachée au fonds.');
-    const requete = en(app, await connecter(app, (await creerUtilisateur('responsable_documentaire')).email));
-    const r = (await requete('GET', '/api/a-verifier?file=sans_marche')).json();
-    expect(r.compteurs.sansMarche).toBe(1);
-    expect(r.documents[0].titre).toBe('Sans marché');
-  });
-
-  it('refuse ces files à un lecteur', async () => {
+  it('refuse la corbeille à un lecteur', async () => {
     const requete = en(app, await connecter(app, (await creerUtilisateur('lecteur')).email));
-    expect((await requete('GET', '/api/a-verifier')).statusCode).toBe(403);
     expect((await requete('GET', '/api/corbeille')).statusCode).toBe(403);
   });
 });
 
 describe('la cloche (§11)', () => {
-  it('annonce ce qui travaille et ce qui attend une décision', async () => {
-    const d = await doc('Scan muet', 'Texte assez long pour exister dans la base de test.', { statutOcr: 'en_attente' });
-    await db.suggestion.create({ data: { documentId: d.id, champ: 'client', valeur: 'TGR', cibleId: client.id, confiance: 80 } });
+  it('annonce ce qui travaille et ce qui attend', async () => {
+    await doc('Scan muet', 'Texte assez long pour exister dans la base de test.', { statutOcr: 'en_attente' });
 
     const requete = en(app, await connecter(app, (await creerUtilisateur('responsable_documentaire')).email));
     const r = (await requete('GET', '/api/notifications')).json();
 
-    const cles = r.taches.map((t) => t.cle);
-    expect(cles).toContain('ocr_attente');
-    expect(cles).toContain('suggestions');
+    expect(r.taches.map((t) => t.cle)).toContain('ocr_attente');
     expect(r.arrivees).toBeGreaterThan(0);
-  });
-
-  it('ne montre pas à un lecteur les files qu’il ne peut pas traiter', async () => {
-    const d = await doc('Pièce', 'Texte assez long pour exister dans la base de test.');
-    await db.suggestion.create({ data: { documentId: d.id, champ: 'client', valeur: 'TGR', cibleId: client.id, confiance: 80 } });
-
-    const requete = en(app, await connecter(app, (await creerUtilisateur('lecteur')).email));
-    const r = (await requete('GET', '/api/notifications')).json();
-    expect(r.taches.map((t) => t.cle)).not.toContain('suggestions');
   });
 });

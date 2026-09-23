@@ -71,7 +71,6 @@ export function PageDocuments() {
     onSuccess: (r) => {
       fileAttente.invalidateQueries({ queryKey: ['documents'] });
       fileAttente.invalidateQueries({ queryKey: ['corbeille'] });
-      fileAttente.invalidateQueries({ queryKey: ['a-verifier'] });
       fileAttente.invalidateQueries({ queryKey: ['marches'] });
       notifier({
         titre: `${r.supprimes} pièce(s) mise(s) en corbeille`,
@@ -319,7 +318,6 @@ export function PageFicheDocument() {
     mutationFn: () => api(`/api/documents/${id}/corbeille`, { methode: 'POST' }),
     onSuccess: () => {
       file.invalidateQueries({ queryKey: ['documents'] });
-      file.invalidateQueries({ queryKey: ['a-verifier'] });
       file.invalidateQueries({ queryKey: ['corbeille'] });
       notifier({ titre: 'Pièce mise en corbeille', message: 'Elle y reste trente jours, et peut être restaurée depuis « À vérifier ».', ton: 'ok' });
       aller('/documents');

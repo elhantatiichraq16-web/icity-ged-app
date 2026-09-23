@@ -22,7 +22,7 @@ export default async function routesTableauBord(app) {
     const visibles = confidentialitesVisibles(requete.utilisateur.role.code);
     const filtreDocuments = { supprimeLe: null, confidentialite: { in: visibles } };
 
-    const [marches, pieces, totalDocuments, rattaches, pagesTotal, parType, parMois, parClient, activite, aClasser, enCorbeille, suggestions] = await Promise.all([
+    const [marches, pieces, totalDocuments, rattaches, pagesTotal, parType, parMois, parClient, activite, aClasser, enCorbeille] = await Promise.all([
       db.marche.findMany({ include: { client: { select: { id: true, nom: true } } } }),
       piecesParMarche(),
       db.document.count({ where: filtreDocuments }),
@@ -42,7 +42,6 @@ export default async function routesTableauBord(app) {
       }),
       db.document.count({ where: { ...filtreDocuments, OR: [{ marcheId: null }, { typeDocumentId: null }, { clientId: null }] } }),
       db.document.count({ where: { supprimeLe: { not: null } } }),
-      db.suggestion.count({ where: { statut: 'en_attente' } }),
     ]);
 
     // ── Les marchés, avec leur phase et ce qui leur manque ──
@@ -100,7 +99,6 @@ export default async function routesTableauBord(app) {
         // affaire. C'est la mesure de santé du fonds.
         tauxRattachement: totalDocuments ? Math.round((rattaches / totalDocuments) * 100) : 0,
         aClasser,
-        suggestions,
         corbeille: enCorbeille,
       },
       alertes: alertes.slice(0, 12),

@@ -140,17 +140,6 @@ function ContenuBarre({ replie, droits }) {
 
 function EntreeNavigation({ entree, replie }) {
   const Icone = entree.icone;
-  const lieu = useLocation();
-
-  /*
-   * NavLink ne regarde que le chemin. « À vérifier » et « Corbeille » mènent
-   * tous deux à /a-verifier, et s'allumeraient ensemble : on départage sur la
-   * file demandée.
-   */
-  const [chemin, requete] = entree.chemin.split('?');
-  const fileVoulue = new URLSearchParams(requete).get('file');
-  const fileCourante = new URLSearchParams(lieu.search).get('file');
-  const memeFile = lieu.pathname !== chemin || fileVoulue === fileCourante;
 
   const lien = (
     <NavLink
@@ -160,13 +149,13 @@ function EntreeNavigation({ entree, replie }) {
         cx(
           'group relative flex h-10 items-center gap-3 rounded-[10px] px-3 text-[14px] font-medium transition-colors',
           replie && 'justify-center px-0',
-          isActive && memeFile ? 'bg-cyan-voile text-cyan-texte' : 'text-encre-2 hover:bg-surface-2 hover:text-encre',
+          isActive ? 'bg-cyan-voile text-cyan-texte' : 'text-encre-2 hover:bg-surface-2 hover:text-encre',
         )
       }
     >
       {({ isActive }) => (
         <>
-          {isActive && memeFile && <span aria-hidden className="absolute top-2 bottom-2 left-0 w-[3px] rounded-r bg-cyan" />}
+          {isActive && <span aria-hidden className="absolute top-2 bottom-2 left-0 w-[3px] rounded-r bg-cyan" />}
           <Icone className="size-[18px] shrink-0" aria-hidden />
           {replie ? <span className="sr-only">{entree.libelle}</span> : <span className="truncate">{entree.libelle}</span>}
         </>

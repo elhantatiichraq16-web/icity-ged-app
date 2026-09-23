@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import cron from 'node-cron';
 import { db } from './db.js';
 import { ecouter, relever, releverTout } from './services/courriel-imap.js';
+import { classerLeFonds } from './services/classement-auto.js';
 import { purgerJournal, viderCorbeille } from './services/entretien.js';
 import { resteALire, tesseractDisponible, traiterFile } from './services/ocr.js';
 
@@ -61,6 +62,10 @@ async function viderFileOcr() {
       journal.log(`OCR : ${bilan.traites} document(s) lu(s) — ${bilan.lus} avec texte, ${bilan.illisibles} illisible(s), ${bilan.echecs} en échec.`);
       const reste = await resteALire();
       if (reste) journal.log(`OCR : ${reste} document(s) encore en attente.`);
+
+      // Un scan n'a pas de texte au versement : le classement n'avait alors
+      // rien à lire. Maintenant qu'il en a, on le rattrape (§7).
+      if (bilan.lus) await classerLeFonds({ log: journal }).catch((e) => journal.error('Classement après OCR :', e.message));
     }
   } catch (erreur) {
     journal.error('File OCR en échec :', erreur.message);

@@ -19,6 +19,7 @@ import { exiger, exigerConnexion } from '../plugins/authentification.js';
 import { journaliser } from '../services/journal.js';
 import { recalculerPhase } from '../services/phase-marche.js';
 import { cheminComplet, FORMATS, TAILLE_MAX, verserFichier } from '../services/stockage.js';
+import { chargerReferentiels, classerDocument } from '../services/classement-auto.js';
 import { languesInstallees, resteALire, tesseractDisponible, traiterFile } from '../services/ocr.js';
 import { listerSauvegardes, sauvegarder } from '../services/sauvegarde.js';
 
@@ -169,6 +170,23 @@ export default async function routesDocuments(app) {
 
       if (document.marcheId) await recalculerPhase(document.marcheId);
       await journaliser({ utilisateurId: requete.utilisateur.id, action: 'document.verse', objetType: 'Document', objetId: document.id, commentaire: fichier.filename, ip: requete.ip }, requete.log);
+
+      /*
+       * Le classement s'applique tout de suite (§7).
+       *
+       * Il ne remplace jamais ce qui a été indiqué au versement : si le
+       * marché ou le type sont déjà renseignés, ils font foi. La machine ne
+       * remplit que les cases vides, et seulement quand elle est sûre.
+       *
+       * Un échec ici ne doit pas faire échouer le versement : la pièce est
+       * entrée, c'est l'essentiel. Elle restera « à classer ».
+       */
+      try {
+        const referentiels = await chargerReferentiels();
+        await classerDocument(document, referentiels, { requete, log: requete.log });
+      } catch (erreur) {
+        requete.log.error?.({ err: erreur }, `Classement automatique en échec pour le document ${document.id}`);
+      }
 
       const complet = await db.document.findUnique({ where: { id: document.id }, include: { typeDocument: true, marche: true, client: true } });
       return reponse.code(201).send({ document: vueDocument(complet) });
