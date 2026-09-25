@@ -71,7 +71,7 @@ export function Coquille() {
 
       <div className="flex min-h-screen">
         {/* ── Barre latérale (ordinateur) ── */}
-        <aside className={cx('sticky top-0 hidden h-screen shrink-0 flex-col border-r border-trait bg-surface transition-[width] duration-200 lg:flex', replie ? 'w-[76px]' : 'w-64')}>
+        <aside className={cx('sticky top-0 hidden h-screen shrink-0 flex-col border-r border-trait bg-surface transition-[width] duration-200 lg:flex print:hidden', replie ? 'w-[76px]' : 'w-64')}>
           <ContenuBarre replie={replie} droits={droits} />
           <div className="border-t border-trait p-3">
             <button
@@ -101,7 +101,7 @@ export function Coquille() {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <BarreHaut ouvrirTiroir={() => setTiroir(true)} ouvrirPalette={() => setPalette(true)} />
-          <main id="contenu" tabIndex={-1} className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 focus:outline-none sm:px-6 lg:px-8 lg:py-8">
+          <main id="contenu" tabIndex={-1} className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 focus:outline-none sm:px-6 lg:px-8 lg:py-8 print:max-w-none print:p-0">
             <Outlet />
           </main>
         </div>
@@ -180,7 +180,7 @@ function EntreeNavigation({ entree, replie }) {
 function BarreHaut({ ouvrirTiroir, ouvrirPalette }) {
   const surMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-trait bg-[color-mix(in_oklab,var(--surface),transparent_12%)] px-4 backdrop-blur-md sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-trait print:hidden bg-[color-mix(in_oklab,var(--surface),transparent_12%)] px-4 backdrop-blur-md sm:px-6 lg:px-8">
       <button type="button" onClick={ouvrirTiroir} aria-label="Ouvrir le menu" className="grid size-10 place-items-center rounded-lg text-encre-2 hover:bg-surface-2 lg:hidden">
         <Menu className="size-5" aria-hidden />
       </button>

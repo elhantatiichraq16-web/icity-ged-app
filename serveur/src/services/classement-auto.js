@@ -16,6 +16,7 @@
  *    une pièce non classée se voit, une pièce mal classée se perd.
  */
 import { db } from '../db.js';
+import { rattacherAttestations } from './attestations.js';
 import { analyser } from './classement.js';
 import { journaliser } from './journal.js';
 import { recalculerPhase } from './phase-marche.js';
@@ -100,14 +101,27 @@ export async function classerDocument(document, referentiels, { requete, log = c
     ecrits.push('objet');
   }
 
-  if (!ecrits.length) return { classe: false, motif: 'rien de sûr à écrire', ecrits: [] };
+  // Une attestation de référence sans marché suit sa propre règle : elle
+  // rejoint le marché qu'elle cite, ou le déclare (services/attestations.js).
+  const codeType = referentiels.types.find((t) => t.id === (aEcrire.typeDocumentId ?? document.typeDocumentId))?.code;
+  const attestationOrpheline = codeType === 'ATT' && !document.marcheId && !aEcrire.marcheId;
+
+  if (!ecrits.length && !attestationOrpheline) return { classe: false, motif: 'rien de sûr à écrire', ecrits: [] };
 
   // `statutClassement` dit que la machine est passée : une pièce qu'elle n'a
   // pas su classer reste « en_attente », et se retrouve par ce filtre.
-  await db.document.update({
-    where: { id: document.id },
-    data: { ...aEcrire, statutClassement: aEcrire.marcheId || aEcrire.typeDocumentId ? 'classe' : 'partiel' },
-  });
+  if (ecrits.length) {
+    await db.document.update({
+      where: { id: document.id },
+      data: { ...aEcrire, statutClassement: aEcrire.marcheId || aEcrire.typeDocumentId ? 'classe' : 'partiel' },
+    });
+  }
+
+  if (attestationOrpheline) {
+    const bilan = await rattacherAttestations({ ids: [document.id], utilisateurId: requete?.utilisateur?.id ?? null, log });
+    if (bilan.rattachees) ecrits.push(bilan.declares.length ? 'marché (déclaré par l’attestation)' : 'marché');
+    if (!ecrits.length) return { classe: false, motif: 'numéro de marché illisible', ecrits: [] };
+  }
 
   // La phase d'un marché se déduit de ses pièces : elle change dès qu'une
   // pièce du cycle le rejoint.

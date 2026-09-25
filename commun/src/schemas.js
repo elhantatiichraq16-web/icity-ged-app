@@ -90,6 +90,41 @@ export const schemaModifierUtilisateur = z.object({
   actif: z.boolean().optional(),
 });
 
+/** Une liste saisie sans doublon : « TGR, TGR » ne fait qu'un synonyme. */
+const sansDoublon = (liste) => [...new Set(liste)];
+
+/**
+ * Un maître d'ouvrage (écran Clients).
+ *
+ * Les synonymes servent à reconnaître le client dans le texte lu (§7), les
+ * domaines à rattacher ses mails (§10). Ils arrivent déjà découpés en listes.
+ */
+export const schemaClient = z.object({
+  nom: z
+    .string({ error: 'Saisissez le nom du client.' })
+    .trim()
+    .min(2, { error: 'Au moins 2 caractères.' })
+    .max(160, { error: '160 caractères au plus.' }),
+  sigle: z
+    .string()
+    .trim()
+    .max(40, { error: '40 caractères au plus.' })
+    .transform((v) => v || null)
+    .nullish(),
+  synonymes: z.array(z.string().trim().min(1).max(120)).max(30, { error: '30 synonymes au plus.' }).default([]).transform(sansDoublon),
+  domainesEmail: z
+    .array(
+      z
+        .string()
+        .trim()
+        .toLowerCase()
+        .regex(/^(?:[a-z0-9-]+\.)+[a-z]{2,}$/, { error: 'Domaine invalide : écrivez par exemple « tgr.gov.ma », sans @.' }),
+    )
+    .max(20, { error: '20 domaines au plus.' })
+    .default([])
+    .transform(sansDoublon),
+});
+
 /**
  * Transforme les erreurs Zod en { champ: message }, la forme qu'affichent
  * les formulaires.

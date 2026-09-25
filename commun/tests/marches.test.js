@@ -8,7 +8,9 @@ import {
   memeAffaire,
   normaliserReference,
   phaseDe,
+  estAppelOffres,
   piecesManquantes,
+  statutClient,
 } from '../src/marches.js';
 
 describe('normalisation des références (§5)', () => {
@@ -100,8 +102,9 @@ describe('phase déduite des pièces (§5)', () => {
     expect(phaseDe(pieces)).toBe(attendue);
   });
 
-  it('une attestation seule ne fait pas avancer le cycle', () => {
-    expect(phaseDe({ att: true })).toBe('attente');
+  it('une attestation de référence clôt le marché : elle n’est délivrée qu’après exécution', () => {
+    expect(phaseDe({ att: true })).toBe('cloture');
+    expect(phaseDe({ os: true, bl: true, att: true })).toBe('cloture');
   });
 });
 
@@ -153,5 +156,35 @@ describe('échéance', () => {
     expect(etatEcheance('2027-01-01', 'cours', aujourdhui)).toBe('lointaine');
     expect(etatEcheance('2026-09-01', 'cloture', aujourdhui)).toBe('aucune');
     expect(etatEcheance(null, 'cours', aujourdhui)).toBe('aucune');
+  });
+});
+
+describe('statut d’un client', () => {
+  it('se déduit des phases de ses marchés', () => {
+    expect(statutClient([])).toBe('sans_marche');
+    expect(statutClient(['cloture', 'cloture'])).toBe('clos');
+    // Un seul marché ouvert suffit : le client a des affaires en cours.
+    expect(statutClient(['cloture', 'attente'])).toBe('en_cours');
+    expect(statutClient(['caution'])).toBe('en_cours');
+  });
+});
+
+describe('appel d’offres ou marché', () => {
+  it('un dossier sans preuve d’attribution est un appel d’offres', () => {
+    expect(estAppelOffres(['DAO'])).toBe(true);
+    expect(estAppelOffres(['DAO', 'ETU', 'CAU'])).toBe(true); // la caution provisoire accompagne l’offre
+    expect(estAppelOffres([])).toBe(true);
+  });
+
+  it('un contrat, un OS ou une attestation en fait un marché', () => {
+    expect(estAppelOffres(['DAO', 'CM'])).toBe(false);
+    expect(estAppelOffres(['OS'])).toBe(false);
+    expect(estAppelOffres(['ATT'])).toBe(false);
+  });
+
+  it('le statut choisi à la main l’emporte sur le dossier', () => {
+    expect(estAppelOffres(['CM', 'OS'], 'Perdu')).toBe(true);
+    expect(estAppelOffres(['DAO'], 'Gagné')).toBe(false);
+    expect(estAppelOffres(['DAO'], 'AO déposé')).toBe(true);
   });
 });

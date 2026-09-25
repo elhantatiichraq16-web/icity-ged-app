@@ -76,7 +76,7 @@ export function PageTableauDeBord() {
           icone={FolderKanban}
           titre="Marchés en cours"
           chiffre={tuiles.parPhase.cours + tuiles.parPhase.provisoire}
-          note={`${tuiles.parPhase.attente} en attente d’OS · ${tuiles.marchesTotal} au total`}
+          note={`${tuiles.parPhase.attente} en attente d’OS · ${tuiles.marchesTotal} au total · ${tuiles.appelsOffres ?? 0} appel(s) d’offres`}
           vers="/marches?phase=cours"
         />
         <Tuile

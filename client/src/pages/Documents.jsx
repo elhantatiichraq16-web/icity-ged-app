@@ -37,6 +37,8 @@ export function PageDocuments() {
   const page = Number(parametres.get('page') ?? 1);
   const q = parametres.get('q') ?? '';
   const marcheId = parametres.get('marcheId') ?? '';
+  const clientId = parametres.get('clientId') ?? '';
+  const sansMarche = parametres.get('sansMarche') ?? '';
   const typeId = parametres.get('typeId') ?? '';
   const statutOcr = parametres.get('statutOcr') ?? '';
 
@@ -52,13 +54,17 @@ export function PageDocuments() {
   const { droits } = useSession();
 
   const requete = new URLSearchParams({ page: String(page) });
-  for (const [cle, valeur] of [['q', q], ['marcheId', marcheId], ['typeId', typeId], ['statutOcr', statutOcr]]) {
+  for (const [cle, valeur] of [['q', q], ['marcheId', marcheId], ['clientId', clientId], ['sansMarche', sansMarche], ['typeId', typeId], ['statutOcr', statutOcr]]) {
     if (valeur) requete.set(cle, valeur);
   }
 
   const documents = useQuery({ queryKey: ['documents', requete.toString()], queryFn: () => api(`/api/documents?${requete}`) });
   const marches = useQuery({ queryKey: ['marches'], queryFn: () => api('/api/marches') });
   const referentiels = useQuery({ queryKey: ['referentiels'], queryFn: () => api('/api/referentiels') });
+  // Le filtre client arrive de l'écran Clients (« Voir ses pièces ») : il n'a pas
+  // de liste à lui, seulement une pastille qu'on retire.
+  const clients = useQuery({ queryKey: ['clients'], queryFn: () => api('/api/clients'), enabled: Boolean(clientId) });
+  const clientFiltre = (clients.data ?? []).find((c) => String(c.id) === clientId);
 
   /**
    * Met le lot en corbeille.
@@ -168,6 +174,32 @@ export function PageDocuments() {
             </option>
           ))}
         </select>
+        {sansMarche && (
+          <span className="inline-flex h-10 items-center gap-2 rounded-[10px] border border-cyan bg-cyan-voile pr-1.5 pl-3 text-sm font-semibold text-cyan-texte">
+            Sans marché
+            <button
+              type="button"
+              onClick={() => filtrer('sansMarche', '')}
+              aria-label="Retirer le filtre « sans marché »"
+              className="grid size-7 place-items-center rounded-md hover:bg-[color-mix(in_oklab,var(--cyan),transparent_85%)]"
+            >
+              <X className="size-4" aria-hidden />
+            </button>
+          </span>
+        )}
+        {clientId && (
+          <span className="inline-flex h-10 items-center gap-2 rounded-[10px] border border-cyan bg-cyan-voile pr-1.5 pl-3 text-sm text-cyan-texte">
+            Client : <strong className="max-w-56 truncate font-semibold">{clientFiltre?.nom ?? '…'}</strong>
+            <button
+              type="button"
+              onClick={() => filtrer('clientId', '')}
+              aria-label="Retirer le filtre client"
+              className="grid size-7 place-items-center rounded-md hover:bg-[color-mix(in_oklab,var(--cyan),transparent_85%)]"
+            >
+              <X className="size-4" aria-hidden />
+            </button>
+          </span>
+        )}
       </Carte>
 
       {/*
@@ -300,6 +332,62 @@ export function PageDocuments() {
   );
 }
 
+/**
+ * Un doublon probable, signalé sur la page du document (§9).
+ *
+ * Les rescans sûrs (même page, deux passages de scanner) ont déjà été réglés
+ * seuls ; ceux qui restent ici se ressemblent sans que la machine puisse
+ * conclure. On tranche d'un clic : ce qu'on écarte passe en corbeille, et son
+ * marché, son type et ses étiquettes rejoignent la pièce gardée.
+ */
+function AlerteDoublon({ document: d, doublon }) {
+  const aller = useNavigate();
+  const file = useQueryClient();
+  const { notifier } = useToasts();
+  const { droits } = useSession();
+
+  const trancher = useMutation({
+    mutationFn: (corps) => api(`/api/doublons/${doublon.paireId}/decision`, { methode: 'POST', corps }),
+    onSuccess: (r, corps) => {
+      for (const cle of [['document'], ['documents'], ['marche'], ['marches'], ['corbeille'], ['tableau-bord']]) file.invalidateQueries({ queryKey: cle });
+      if (corps.decision === 'gardes') {
+        notifier({ titre: 'Les deux pièces sont gardées', message: 'Cette paire ne sera plus signalée.', ton: 'ok' });
+      } else if (r.ecarteId === d.id) {
+        notifier({ titre: 'Pièce mise en corbeille', message: 'Vous voici sur la pièce gardée. La corbeille la garde trente jours.', ton: 'ok' });
+        aller(`/documents/${doublon.autre.id}`);
+      } else {
+        notifier({ titre: 'Le double est en corbeille', message: `« ${doublon.autre.titre} » y reste trente jours.`, ton: 'ok' });
+      }
+    },
+    onError: (e) => notifier({ titre: 'Décision non enregistrée', message: e.message, ton: 'alerte' }),
+  });
+
+  return (
+    <Alerte ton="attente" className="mb-5" titre={`Doublon probable — ${doublon.score} % de ressemblance`}>
+      <p>
+        Cette pièce ressemble à{' '}
+        <Link to={`/documents/${doublon.autre.id}`} className="font-semibold text-cyan-texte hover:underline">
+          « {doublon.autre.titre} »
+        </Link>
+        {doublon.raisons.length > 0 && <span className="text-encre-3"> — {doublon.raisons.join(' · ')}</span>}.
+      </p>
+      {droits.can('gerer', 'AVerifier') && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Bouton taille="petit" variante="secondaire" disabled={trancher.isPending} onClick={() => trancher.mutate({ decision: 'gardes' })}>
+            Garder les deux
+          </Bouton>
+          <Bouton taille="petit" variante="secondaire" icone={Trash2} disabled={trancher.isPending} onClick={() => trancher.mutate({ decision: 'supprime', garderId: d.id })}>
+            Mettre l’autre à la corbeille
+          </Bouton>
+          <Bouton taille="petit" variante="secondaire" icone={Trash2} disabled={trancher.isPending} onClick={() => trancher.mutate({ decision: 'supprime', garderId: doublon.autre.id })}>
+            Mettre celle-ci à la corbeille
+          </Bouton>
+        </div>
+      )}
+    </Alerte>
+  );
+}
+
 export function PageFicheDocument() {
   const { id } = useParams();
   const aller = useNavigate();
@@ -319,7 +407,7 @@ export function PageFicheDocument() {
     onSuccess: () => {
       file.invalidateQueries({ queryKey: ['documents'] });
       file.invalidateQueries({ queryKey: ['corbeille'] });
-      notifier({ titre: 'Pièce mise en corbeille', message: 'Elle y reste trente jours, et peut être restaurée depuis « À vérifier ».', ton: 'ok' });
+      notifier({ titre: 'Pièce mise en corbeille', message: 'Elle y reste trente jours, et peut être restaurée depuis la Corbeille.', ton: 'ok' });
       aller('/documents');
     },
     onError: (e) => notifier({ titre: 'Suppression impossible', message: e.message, ton: 'alerte' }),
@@ -371,11 +459,15 @@ export function PageFicheDocument() {
         </div>
       </div>
 
+      {(d.doublons ?? []).map((doublon) => (
+        <AlerteDoublon key={doublon.paireId} document={d} doublon={doublon} />
+      ))}
+
       <Confirmation
         ouverte={confirme}
         surChangement={setConfirme}
         titre="Mettre cette pièce en corbeille ?"
-        description={`« ${d.titre} » sera retirée du fonds mais gardée trente jours. Vous pourrez la restaurer depuis l’écran « À vérifier ».`}
+        description={`« ${d.titre} » sera retirée du fonds mais gardée trente jours. Vous pourrez la restaurer depuis la Corbeille.`}
         libelle="Mettre en corbeille"
         chargement={supprimer.isPending}
         surConfirmer={() => supprimer.mutate()}

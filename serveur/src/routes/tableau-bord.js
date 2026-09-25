@@ -7,10 +7,10 @@
  * croire.
  */
 import { confidentialitesVisibles } from '@icity/commun/droits';
-import { echeanceDe, etatEcheance, ORDRE_PHASES, phaseDe, piecesManquantes, PIECES_CYCLE } from '@icity/commun/marches';
+import { echeanceDe, estAppelOffres, etatEcheance, ORDRE_PHASES, phaseDe, piecesManquantes, PIECES_CYCLE } from '@icity/commun/marches';
 import { db } from '../db.js';
 import { exigerConnexion } from '../plugins/authentification.js';
-import { piecesParMarche } from '../services/phase-marche.js';
+import { codesParMarche, piecesParMarche } from '../services/phase-marche.js';
 
 const nombre = (v) => (typeof v === 'bigint' ? Number(v) : (v ?? 0));
 
@@ -22,9 +22,10 @@ export default async function routesTableauBord(app) {
     const visibles = confidentialitesVisibles(requete.utilisateur.role.code);
     const filtreDocuments = { supprimeLe: null, confidentialite: { in: visibles } };
 
-    const [marches, pieces, totalDocuments, rattaches, pagesTotal, parType, parMois, parClient, activite, aClasser, enCorbeille] = await Promise.all([
+    const [marches, pieces, codes, totalDocuments, rattaches, pagesTotal, parType, parMois, activite, aClasser, enCorbeille] = await Promise.all([
       db.marche.findMany({ include: { client: { select: { id: true, nom: true } } } }),
       piecesParMarche(),
+      codesParMarche(),
       db.document.count({ where: filtreDocuments }),
       db.document.count({ where: { ...filtreDocuments, marcheId: { not: null } } }),
       db.document.aggregate({ where: filtreDocuments, _sum: { pages: true } }),
@@ -33,7 +34,6 @@ export default async function routesTableauBord(app) {
         SELECT to_char(cree_le, 'YYYY-MM') AS mois, COUNT(*) AS n
           FROM documents WHERE supprime_le IS NULL
          GROUP BY mois ORDER BY mois DESC LIMIT 12`,
-      db.marche.groupBy({ by: ['clientId'], _count: { _all: true } }),
       db.journal.findMany({
         where: { action: { notIn: ['connexion', 'deconnexion', 'connexion.echec'] } },
         include: { utilisateur: { select: { nom: true } } },
@@ -45,7 +45,11 @@ export default async function routesTableauBord(app) {
     ]);
 
     // ── Les marchés, avec leur phase et ce qui leur manque ──
-    const vus = marches.map((m) => {
+    // Les appels d'offres non gagnés sont comptés à part : ils n'ont ni phase,
+    // ni pièce manquante, ni ordre de service à attendre.
+    const appelsOffres = marches.filter((m) => estAppelOffres(codes.get(m.id) ?? [], m.statutAffaire));
+    const idsAppelsOffres = new Set(appelsOffres.map((m) => m.id));
+    const vus = marches.filter((m) => !idsAppelsOffres.has(m.id)).map((m) => {
       const p = pieces.get(m.id) ?? {};
       const phase = phaseDe(p);
       const echeance = echeanceDe(m);
@@ -85,10 +89,13 @@ export default async function routesTableauBord(app) {
     const types = await db.typeDocument.findMany();
     const nomType = new Map(types.map((t) => [t.id, t.nom]));
     const nomClient = new Map(marches.filter((m) => m.client).map((m) => [m.clientId, m.client.nom]));
+    const parClient = new Map();
+    for (const m of vus) parClient.set(m.clientId ?? null, (parClient.get(m.clientId ?? null) ?? 0) + 1);
 
     return {
       tuiles: {
         marchesTotal: vus.length,
+        appelsOffres: appelsOffres.length,
         parPhase,
         incomplets: incomplets.length,
         cautions: cautions.length,
@@ -111,8 +118,8 @@ export default async function routesTableauBord(app) {
           .map((m) => ({ nom: m.reference, n: m.manquantes.length, detail: m.manquantes.map((c) => PIECES_CYCLE.find((p) => p.cle === c).titre).join(', ') }))
           .sort((a, b) => b.n - a.n)
           .slice(0, 10),
-        marchesParClient: parClient
-          .map((c) => ({ nom: c.clientId ? (nomClient.get(c.clientId) ?? '—') : 'Sans client', n: c._count._all }))
+        marchesParClient: [...parClient]
+          .map(([clientId, n]) => ({ nom: clientId ? (nomClient.get(clientId) ?? '—') : 'Sans client', n }))
           .sort((a, b) => b.n - a.n)
           .slice(0, 8),
         versementsParMois: parMois.map((m) => ({ nom: m.mois, n: nombre(m.n) })).reverse(),

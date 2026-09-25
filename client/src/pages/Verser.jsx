@@ -6,7 +6,7 @@
  * satureraient la mémoire, et le serveur lit le texte de chaque PDF au passage.
  */
 import { useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Copy, FileUp, LoaderCircle, Upload, XCircle } from 'lucide-react';
 import { api, ErreurApi } from '../api.js';
@@ -33,7 +33,9 @@ export function PageVerser() {
   const entree = useRef(null);
   const [survol, setSurvol] = useState(false);
   const [lignes, setLignes] = useState([]);
-  const [marcheId, setMarcheId] = useState('');
+  // Venu de la fiche d'un marché (« Verser une pièce »), le marché est déjà choisi.
+  const [parametres] = useSearchParams();
+  const [marcheId, setMarcheId] = useState(() => parametres.get('marcheId') ?? '');
   const [typeId, setTypeId] = useState('');
   const [enCours, setEnCours] = useState(false);
 

@@ -257,12 +257,15 @@ export async function traiterFile({ limite = 20, log = console } = {}) {
     take: limite,
   });
 
-  const bilan = { ignoree: false, traites: 0, lus: 0, illisibles: 0, echecs: 0 };
+  // idsLus : les pièces qui ont désormais du texte, à comparer aux autres (doublons).
+  const bilan = { ignoree: false, traites: 0, lus: 0, illisibles: 0, echecs: 0, idsLus: [] };
   for (const document of aLire) {
     const resultat = await lireDocument(document, { log });
     bilan.traites += 1;
-    if (resultat.ok) bilan.lus += 1;
-    else if (resultat.motif) bilan.echecs += 1;
+    if (resultat.ok) {
+      bilan.lus += 1;
+      bilan.idsLus.push(document.id);
+    } else if (resultat.motif) bilan.echecs += 1;
     else bilan.illisibles += 1;
   }
   return bilan;

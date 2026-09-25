@@ -1,12 +1,16 @@
 /**
  * La liste des marchés (§11, écran 2) : filtrable, triable, avec le badge de
  * phase, l'échéance et les six colonnes de pièces ✓ ✗ ·
+ *
+ * Deux onglets : les marchés gagnés, et les appels d'offres qui ne le sont
+ * pas (ou pas encore). Le serveur fait le tri (`appelOffres`) d'après les
+ * pièces du dossier et le statut choisi à la main.
  */
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, Check, Download, LoaderCircle, Minus, Search, Upload, X } from 'lucide-react';
-import { ORDRE_PHASES, PHASES, PIECES_CYCLE } from '@icity/commun/marches';
+import { Link, useNavigate, useSearchParams } from 'react-router';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowDown, ArrowRight, ArrowUp, Check, Download, LoaderCircle, Minus, Search, Upload, X } from 'lucide-react';
+import { ORDRE_PHASES, PHASES, PIECES_CYCLE, STATUTS_APPEL_OFFRES } from '@icity/commun/marches';
 import { api } from '../api.js';
 import { dateCourte } from '../format.js';
 import { Badge, Carte, EnTetePage, EtatVide, SqueletteLignes } from '../ui/Elements.jsx';
@@ -22,6 +26,116 @@ export const CLE_MARCHES = ['marches'];
 export function BadgePhase({ phase }) {
   const p = PHASES[phase];
   return <Badge ton={p?.ton ?? 'neutre'}>{p?.court ?? phase}</Badge>;
+}
+
+/**
+ * L'état d'une affaire : sa phase si c'est un marché, son statut si c'est un
+ * appel d'offres (« AO déposé », « Perdu »…) — un AO n'a pas de cycle.
+ */
+export function BadgeEtatMarche({ marche }) {
+  if (!marche.appelOffres) return <BadgePhase phase={marche.phase} />;
+  return <Badge ton={marche.statutAffaire === 'Perdu' ? 'alerte' : 'attente'}>{marche.statutAffaire ?? 'Appel d’offres'}</Badge>;
+}
+
+/** Les statuts proposés pour qualifier un appel d'offres ; « Gagné » en fait un marché. */
+const CHOIX_STATUT_AO = [...STATUTS_APPEL_OFFRES, 'Gagné'];
+
+/**
+ * Le statut d'un appel d'offres, modifiable sur place.
+ *
+ * Vide, c'est la détection automatique qui range l'affaire ici (« à
+ * qualifier ») ; choisir « Gagné » la fait passer dans l'onglet Marchés.
+ */
+function StatutAppelOffres({ marche, peutModifier }) {
+  const file = useQueryClient();
+  const { notifier } = useToasts();
+
+  const changer = useMutation({
+    mutationFn: (statutAffaire) => api(`/api/marches/${marche.id}`, { methode: 'PATCH', corps: { statutAffaire: statutAffaire || null } }),
+    onSuccess: (m) => {
+      file.invalidateQueries({ queryKey: CLE_MARCHES });
+      file.invalidateQueries({ queryKey: ['clients'] });
+      file.invalidateQueries({ queryKey: ['tableau-bord'] });
+      notifier(
+        m.appelOffres
+          ? { titre: 'Statut enregistré', message: `${m.reference} : ${m.statutAffaire ?? 'à qualifier'}.`, ton: 'ok' }
+          : { titre: `${m.reference} est un marché gagné`, message: 'Il passe dans l’onglet Marchés gagnés.', ton: 'ok' },
+      );
+    },
+    onError: (erreur) => notifier({ titre: 'Statut non enregistré', message: erreur.message, ton: 'alerte' }),
+  });
+
+  if (!peutModifier) return <BadgeEtatMarche marche={marche} />;
+  return (
+    <select
+      value={marche.statutAffaire ?? ''}
+      disabled={changer.isPending}
+      onChange={(e) => changer.mutate(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      aria-label={`Statut de l’appel d’offres ${marche.reference}`}
+      className="h-9 rounded-[10px] border border-trait bg-surface-2 px-2.5 text-[13px] focus:border-cyan focus:outline-none disabled:opacity-60"
+    >
+      <option value="">À qualifier</option>
+      {CHOIX_STATUT_AO.map((s) => (
+        <option key={s} value={s}>
+          {s}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** L'onglet des appels d'offres : ce qui a été préparé ou déposé, sans être gagné. */
+function TableauAppelsOffres({ appels, peutModifier }) {
+  const aller = useNavigate();
+  if (!appels.length) {
+    return (
+      <Carte>
+        <EtatVide titre="Aucun appel d’offres en cours">
+          Une affaire arrive ici quand son dossier ne contient qu’un dossier d’appel d’offres, sans contrat ni ordre de service.
+        </EtatVide>
+      </Carte>
+    );
+  }
+  return (
+    <Carte>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] text-sm">
+          <caption className="sr-only">Appels d’offres non gagnés</caption>
+          <thead>
+            <tr className="border-b border-trait text-left text-[12px] tracking-wide text-encre-3 uppercase">
+              <th scope="col" className="px-4 py-3 font-semibold">Référence</th>
+              <th scope="col" className="px-4 py-3 font-semibold">Client</th>
+              <th scope="col" className="px-4 py-3 font-semibold">Objet</th>
+              <th scope="col" className="px-4 py-3 font-semibold">Statut</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">Pièces</th>
+            </tr>
+          </thead>
+          <tbody>
+            {appels.map((m) => (
+              <tr key={m.id} onClick={() => aller(`/marches/${m.id}`)} className="cursor-pointer border-b border-trait last:border-0 hover:bg-surface-2">
+                <td className="px-4 py-3">
+                  <Link to={`/marches/${m.id}`} onClick={(e) => e.stopPropagation()} className="chiffres font-medium text-cyan-texte hover:underline">
+                    {m.reference}
+                  </Link>
+                </td>
+                <td className="max-w-52 truncate px-4 py-3 text-encre-2" title={m.client?.nom}>
+                  {m.client?.nom ?? '—'}
+                </td>
+                <td className="max-w-64 truncate px-4 py-3 text-encre-2" title={m.objet ?? m.objetTechnique ?? ''}>
+                  {m.objet ?? m.objetTechnique ?? <span className="text-encre-3">—</span>}
+                </td>
+                <td className="px-4 py-3">
+                  <StatutAppelOffres marche={m} peutModifier={peutModifier} />
+                </td>
+                <td className="chiffres px-4 py-3 text-right text-encre-2">{m.nbDocuments}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Carte>
+  );
 }
 
 /**
@@ -119,6 +233,9 @@ function CasePiece({ documentId, manquante, piece, typeId, marche, surVerse, peu
 }
 
 export function PageMarches() {
+  // L'onglet dans l'URL : le tableau de bord peut mener droit aux appels d'offres.
+  const [parametres, setParametres] = useSearchParams();
+  const onglet = parametres.get('onglet') === 'ao' ? 'ao' : 'marches';
   const [phase, setPhase] = useState('');
   const [clientId, setClientId] = useState('');
   const [incomplets, setIncomplets] = useState(false);
@@ -136,6 +253,14 @@ export function PageMarches() {
   // le dépôt a besoin de l'identifiant, le tableau ne connaît que le code.
   const typeParCode = new Map((referentiels.data?.types ?? []).map((t) => [t.code, t.id]));
   const peutVerser = droits.can('verser', 'Document');
+  const typeAttestation = (referentiels.data?.types ?? []).find((t) => t.code === 'ATT');
+
+  // Les attestations mises à part : leur numéro de marché ne se lit pas.
+  const attestationsEnAttente = useQuery({
+    queryKey: ['documents', 'attestations-en-attente', typeAttestation?.id],
+    queryFn: () => api(`/api/documents?typeId=${typeAttestation.id}&sansMarche=true`),
+    enabled: Boolean(typeAttestation),
+  });
 
   /** Après un dépôt : la phase et les pièces ont changé, on relit. */
   function apresVersement() {
@@ -143,8 +268,11 @@ export function PageMarches() {
     file.invalidateQueries({ queryKey: ['documents'] });
   }
 
+  const gagnes = useMemo(() => (marches.data ?? []).filter((m) => !m.appelOffres), [marches.data]);
+  const appels = useMemo(() => (marches.data ?? []).filter((m) => m.appelOffres), [marches.data]);
+
   const visibles = useMemo(() => {
-    let liste = marches.data ?? [];
+    let liste = gagnes;
     const q = recherche.trim().toLowerCase();
     if (q) liste = liste.filter((m) => `${m.reference} ${m.objet ?? ''} ${m.client?.nom ?? ''} ${m.ville ?? ''}`.toLowerCase().includes(q));
     if (phase) liste = liste.filter((m) => m.phase === phase);
@@ -164,7 +292,7 @@ export function PageMarches() {
       const c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), 'fr', { numeric: true });
       return c * tri.sens;
     });
-  }, [marches.data, recherche, phase, clientId, incomplets, tri]);
+  }, [gagnes, recherche, phase, clientId, incomplets, tri]);
 
   function Colonne({ id, children, className }) {
     const actif = tri.colonne === id;
@@ -184,7 +312,8 @@ export function PageMarches() {
     );
   }
 
-  const total = marches.data?.length ?? 0;
+  const total = gagnes.length;
+  const enAttente = attestationsEnAttente.data?.total ?? 0;
 
   return (
     <div className="animate-apparition">
@@ -192,6 +321,7 @@ export function PageMarches() {
         titre="Marchés"
         description="Chaque affaire, sa phase calculée d’après les pièces versées, et ce qui manque à son dossier."
         actions={
+          onglet === 'marches' && (
           <div className="flex items-center gap-3">
             <Badge ton="cyan">{total} marchés</Badge>
             {/* Un lien, pas un appel : le navigateur enregistre le fichier
@@ -201,7 +331,7 @@ export function PageMarches() {
               taille="petit"
               icone={Download}
               onClick={() => {
-                const filtres = new URLSearchParams();
+                const filtres = new URLSearchParams({ nature: 'marches' });
                 if (phase) filtres.set('phase', phase);
                 if (clientId) filtres.set('clientId', clientId);
                 if (incomplets) filtres.set('incomplets', 'true');
@@ -212,9 +342,42 @@ export function PageMarches() {
               Exporter
             </Bouton>
           </div>
+          )
         }
       />
 
+      <div role="tablist" aria-label="Marchés ou appels d’offres" className="mb-5 flex gap-1 border-b border-trait">
+        {[
+          ['marches', 'Marchés gagnés', total],
+          ['ao', 'Appels d’offres', appels.length],
+        ].map(([cle, libelle, n]) => (
+          <button
+            key={cle}
+            type="button"
+            role="tab"
+            aria-selected={onglet === cle}
+            onClick={() => setParametres(cle === 'ao' ? { onglet: 'ao' } : {}, { replace: true })}
+            className={cx(
+              '-mb-px inline-flex items-center gap-2 border-b-2 px-3 pb-2.5 text-sm font-medium transition-colors',
+              onglet === cle ? 'border-cyan text-encre' : 'border-transparent text-encre-3 hover:text-encre',
+            )}
+          >
+            {libelle}
+            <span className={cx('chiffres rounded-full px-2 text-[11.5px]', onglet === cle ? 'bg-cyan-voile text-cyan-texte' : 'bg-surface-2')}>{n}</span>
+          </button>
+        ))}
+      </div>
+
+      {onglet === 'ao' ? (
+        marches.isPending ? (
+          <Carte className="p-5">
+            <SqueletteLignes lignes={3} />
+          </Carte>
+        ) : (
+          <TableauAppelsOffres appels={appels} peutModifier={droits.can('modifier', 'Marche')} />
+        )
+      ) : (
+      <>
       <Carte className="mb-5 flex flex-wrap items-center gap-3 p-4">
         <div className="relative min-w-56 flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-encre-3" aria-hidden />
@@ -230,7 +393,7 @@ export function PageMarches() {
           <option value="">Toutes les phases</option>
           {ORDRE_PHASES.map((p) => (
             <option key={p} value={p}>
-              {PHASES[p].nom} ({(marches.data ?? []).filter((m) => m.phase === p).length})
+              {PHASES[p].nom} ({gagnes.filter((m) => m.phase === p).length})
             </option>
           ))}
         </select>
@@ -303,7 +466,7 @@ export function PageMarches() {
                       {m.objet ?? m.objetTechnique ?? <span className="text-encre-3">—</span>}
                     </td>
                     <td className="px-3 py-2.5">
-                      <BadgePhase phase={m.phase} />
+                      <BadgeEtatMarche marche={m} />
                     </td>
                     <td className={cx('chiffres px-3 py-2.5 text-[13px]', m.etatEcheance === 'depassee' && 'font-semibold text-alerte', m.etatEcheance === 'proche' && 'font-semibold text-attente')}>
                       {m.echeance ? dateCourte(m.echeance) : <span className="text-encre-3">—</span>}
@@ -334,6 +497,18 @@ export function PageMarches() {
         <X className="inline size-3.5 text-alerte" aria-hidden /> manquante à ce stade ·{' '}
         <Minus className="inline size-3 text-encre-3" aria-hidden /> pas encore attendue
       </p>
+
+      {enAttente > 0 && typeAttestation && (
+        <p className="mt-4 flex flex-wrap items-center gap-x-2 rounded-[10px] border border-trait bg-surface-2 px-4 py-3 text-[13.5px] text-encre-2">
+          <strong className="font-semibold text-encre">{enAttente} attestation(s) de référence</strong> attendent leur marché : leur numéro de marché est illisible.
+          Elles le rejoindront dès qu’elles seront rescannées ou que le marché sera versé.
+          <Link to={`/documents?typeId=${typeAttestation.id}&sansMarche=true`} className="inline-flex items-center gap-1 font-semibold text-cyan-texte hover:underline">
+            Les voir <ArrowRight className="size-3.5" aria-hidden />
+          </Link>
+        </p>
+      )}
+      </>
+      )}
     </div>
   );
 }

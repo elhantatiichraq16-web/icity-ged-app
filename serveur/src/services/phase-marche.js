@@ -75,3 +75,28 @@ export async function recalculerToutesLesPhases() {
   }
   return changes;
 }
+
+/**
+ * Les types de pièces présents, par marché (leurs codes : « CM », « OS »…).
+ *
+ * Sert à distinguer un appel d'offres d'un marché gagné (§ « Appels
+ * d'offres ») : ce sont les pièces du dossier qui prouvent l'attribution,
+ * bien au-delà des six pièces du cycle.
+ *
+ * @param {number[]} [marcheIds] limite le calcul à ces marchés
+ * @returns {Promise<Map<number, string[]>>}
+ */
+export async function codesParMarche(marcheIds) {
+  const lignes = await db.document.findMany({
+    where: { supprimeLe: null, marcheId: marcheIds ? { in: marcheIds } : { not: null }, typeDocumentId: { not: null } },
+    select: { marcheId: true, typeDocument: { select: { code: true } } },
+    distinct: ['marcheId', 'typeDocumentId'],
+  });
+  const parMarche = new Map();
+  for (const l of lignes) {
+    const codes = parMarche.get(l.marcheId) ?? [];
+    codes.push(l.typeDocument.code);
+    parMarche.set(l.marcheId, codes);
+  }
+  return parMarche;
+}

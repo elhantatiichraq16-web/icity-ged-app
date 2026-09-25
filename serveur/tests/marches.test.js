@@ -174,7 +174,8 @@ describe('API des marchés', () => {
   });
 
   it('liste les clients avec leurs compteurs, et masque les internes', async () => {
-    await creerMarche('31/2016');
+    // Un contrat : sans aucune preuve d'attribution, ce serait un appel d'offres.
+    await poser(await creerMarche('31/2016'), 'CM');
     await db.client.create({ data: { nom: 'INTELIFEX SYSTEMS', interne: true } });
     const requete = en(app, await connecter(app, (await creerUtilisateur('lecteur')).email));
 
@@ -196,5 +197,71 @@ describe('API des marchés', () => {
   it('exige une connexion', async () => {
     expect((await app.inject({ url: '/api/marches' })).statusCode).toBe(401);
     expect((await app.inject({ url: '/api/clients' })).statusCode).toBe(401);
+  });
+});
+
+describe('API des clients', () => {
+  it('déduit le statut de chaque client de ses marchés, et ne compte pas la corbeille', async () => {
+    const enCours = await creerMarche('31/2016');
+    await poser(enCours, 'OS');
+
+    const autre = await db.client.create({ data: { nom: 'Barid Al-Maghrib' } });
+    const clos = await db.marche.create({ data: { reference: '04/2014', referenceNormalisee: '04/2014', clientId: autre.id } });
+    const mlv = await db.typeDocument.findUniqueOrThrow({ where: { code: 'MLV' } });
+    await db.document.create({ data: { titre: 'Mainlevée', marcheId: clos.id, clientId: autre.id, typeDocumentId: mlv.id } });
+
+    const seul = await db.client.create({ data: { nom: 'SOSIPO' } });
+    await db.document.create({ data: { titre: 'Attestation', clientId: seul.id } });
+    await db.document.create({ data: { titre: 'Jetée', clientId: seul.id, supprimeLe: new Date() } });
+
+    const requete = en(app, await connecter(app, (await creerUtilisateur('lecteur')).email));
+    const parNom = Object.fromEntries((await requete('GET', '/api/clients')).json().map((c) => [c.nom, c]));
+
+    expect(parNom['Trésorerie Générale du Royaume']).toMatchObject({ statut: 'en_cours', nbMarches: 1, nbMarchesEnCours: 1 });
+    expect(parNom['Barid Al-Maghrib']).toMatchObject({ statut: 'clos', nbMarches: 1, nbMarchesEnCours: 0 });
+    expect(parNom.SOSIPO).toMatchObject({ statut: 'sans_marche', nbMarches: 0, nbDocuments: 1 });
+  });
+
+  it('crée un client, réservé à ceux qui gèrent le référentiel', async () => {
+    const lecteur = en(app, await connecter(app, (await creerUtilisateur('lecteur')).email));
+    expect((await lecteur('POST', '/api/clients', { nom: 'ONCF' })).statusCode).toBe(403);
+
+    const responsable = await creerUtilisateur('responsable_documentaire');
+    const requete = en(app, await connecter(app, responsable.email));
+    const r = await requete('POST', '/api/clients', {
+      nom: '  Office National des Chemins de Fer ',
+      sigle: 'ONCF',
+      synonymes: ['ONCF', 'ONCF'],
+      domainesEmail: ['ONCF.ma'],
+    });
+    expect(r.statusCode).toBe(201);
+    expect(r.json()).toMatchObject({ nom: 'Office National des Chemins de Fer', synonymes: ['ONCF'], domainesEmail: ['oncf.ma'], statut: 'sans_marche' });
+
+    const trace = await db.journal.findFirst({ where: { action: 'client.cree' } });
+    expect(trace).toMatchObject({ utilisateurId: responsable.id, objetId: r.json().id });
+  });
+
+  it('refuse un client déjà présent, sans tenir compte des majuscules', async () => {
+    const requete = en(app, await connecter(app, (await creerUtilisateur('directeur')).email));
+    const r = await requete('POST', '/api/clients', { nom: 'trésorerie générale du royaume' });
+    expect(r.statusCode).toBe(409);
+    expect(r.json().erreurs.nom).toMatch(/déjà au référentiel/);
+  });
+
+  it('refuse un domaine e-mail mal écrit', async () => {
+    const requete = en(app, await connecter(app, (await creerUtilisateur('directeur')).email));
+    const r = await requete('POST', '/api/clients', { nom: 'MEDI Telecom', domainesEmail: ['contact@medi.ma'] });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().erreurs['domainesEmail.0']).toMatch(/Domaine invalide/);
+  });
+
+  it('exporte la liste en CSV, avec le statut en toutes lettres', async () => {
+    await poser(await creerMarche('31/2016'), 'CM');
+    const requete = en(app, await connecter(app, (await creerUtilisateur('lecteur')).email));
+    const r = await requete('GET', '/api/clients/export.csv');
+    expect(r.statusCode).toBe(200);
+    expect(r.headers['content-type']).toMatch(/text\/csv/);
+    expect(r.body).toContain('Client;Sigle;Marchés;Marchés en cours;Pièces;Statut;Domaines e-mail');
+    expect(r.body).toContain('Trésorerie Générale du Royaume;TGR;1;1;1;Marchés en cours;');
   });
 });

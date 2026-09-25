@@ -195,14 +195,72 @@ export const ORDRE_PHASES = ['attente', 'cours', 'provisoire', 'caution', 'clotu
  * On lit le dossier en remontant le cycle, de la fin vers le début — la
  * dernière étape franchie donne la phase.
  *
+ * L'attestation de référence clôt aussi le marché : le maître d'ouvrage ne la
+ * délivre qu'une fois le travail fait et reçu. Beaucoup de marchés anciens ne
+ * sont connus que par elle — le dossier d'exécution n'a jamais été numérisé.
+ *
  * @param {{os?: boolean, bl?: boolean, pvp?: boolean, pvd?: boolean, att?: boolean, mlv?: boolean}} pieces
  */
 export function phaseDe(pieces = {}) {
-  if (pieces.mlv) return 'cloture';
+  if (pieces.mlv || pieces.att) return 'cloture';
   if (pieces.pvd) return 'caution'; // réception définitive sans mainlevée
   if (pieces.pvp) return 'provisoire';
   if (pieces.os) return 'cours';
   return 'attente';
+}
+
+// ── Appels d'offres et marchés ───────────────────────────────────
+
+/** Les statuts d'une affaire qui n'est pas (ou pas encore) un marché gagné. */
+export const STATUTS_APPEL_OFFRES = ['Projet préparé', 'AO en préparation', 'AO déposé', 'Perdu', 'Abandonné', 'Annulé'];
+
+/** Les statuts d'une affaire gagnée. */
+export const STATUTS_GAGNES = ['Gagné', 'En exécution', 'Terminé', 'Clôturé', 'Suspendu'];
+
+/**
+ * Les pièces qui prouvent qu'une affaire a été attribuée : le contrat, ce qui
+ * l'exécute, ce qui le paie et ce qui le clôt. Une caution bancaire n'en fait
+ * pas partie — la caution provisoire accompagne l'offre, avant tout résultat.
+ */
+export const PREUVES_ATTRIBUTION = ['CM', 'AV', 'BC', 'OS', 'BL', 'PVP', 'PVD', 'PVMD', 'RMS', 'FAC', 'DEC', 'ATT', 'MLV'];
+
+/**
+ * Une affaire est-elle un appel d'offres non gagné ?
+ *
+ * Le statut choisi à la main tranche d'abord : la machine ne peut pas savoir
+ * qu'un AO a été perdu. Sans statut, on regarde le dossier : sans aucune
+ * preuve d'attribution, ce n'est encore qu'une réponse à un appel d'offres.
+ * Il devient un marché de lui-même dès qu'un contrat ou un OS est versé.
+ *
+ * @param {string[]} codes les codes des types de pièces présentes
+ * @param {string | null} statutAffaire
+ */
+export function estAppelOffres(codes = [], statutAffaire = null) {
+  if (STATUTS_APPEL_OFFRES.includes(statutAffaire)) return true;
+  if (STATUTS_GAGNES.includes(statutAffaire)) return false;
+  return !codes.some((c) => PREUVES_ATTRIBUTION.includes(c));
+}
+
+// ── Le statut d'un client ────────────────────────────────────────
+export const STATUTS_CLIENT = {
+  en_cours: { nom: 'Marchés en cours', ton: 'cyan' },
+  clos: { nom: 'Marchés clôturés', ton: 'ok' },
+  sans_marche: { nom: 'Sans marché', ton: 'neutre' },
+};
+
+/**
+ * Le statut d'un client, déduit des phases de ses marchés.
+ *
+ * Comme la phase, il n'est jamais saisi : il suivrait sinon avec retard les
+ * pièces versées. Un client « sans marché » n'est pas une anomalie — c'est
+ * souvent un maître d'ouvrage connu seulement par une attestation de
+ * référence.
+ *
+ * @param {string[]} phases les phases de ses marchés
+ */
+export function statutClient(phases = []) {
+  if (phases.length === 0) return 'sans_marche';
+  return phases.some((p) => p !== 'cloture') ? 'en_cours' : 'clos';
 }
 
 /**

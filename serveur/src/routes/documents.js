@@ -11,11 +11,13 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
+import { z } from 'zod';
 import { confidentialitesVisibles } from '@icity/commun/droits';
 import { config } from '../config.js';
 import { db } from '../db.js';
-import { ErreurHttp, introuvable } from '../erreurs.js';
+import { ErreurHttp, introuvable, valider } from '../erreurs.js';
 import { exiger, exigerConnexion } from '../plugins/authentification.js';
+import { detecterDoublons, doublonsEnAttente, ecarterDoublon, garderLesDeux } from '../services/arbitrage-doublons.js';
 import { journaliser } from '../services/journal.js';
 import { recalculerPhase } from '../services/phase-marche.js';
 import { cheminComplet, FORMATS, TAILLE_MAX, verserFichier } from '../services/stockage.js';
@@ -122,7 +124,35 @@ export default async function routesDocuments(app) {
       langue: d.langue,
       versePar: d.versePar ? { id: d.versePar.id, nom: d.versePar.nom } : null,
       etiquettes: d.etiquettes.map((e) => ({ id: e.etiquette.id, nom: e.etiquette.nom, couleur: e.etiquette.couleur, famille: e.etiquette.famille })),
+      // Les doublons probables encore à trancher (§9), montrés sur la page.
+      doublons: (await doublonsEnAttente([d.id], { confidentialites: confidentialitesVisibles(requete.utilisateur.role.code) })).get(d.id) ?? [],
     };
+  });
+
+  /**
+   * Trancher un doublon probable (§9) : garder les deux pièces, ou écarter
+   * l'une — ce qu'elle porte (marché, client, type, étiquettes) passe sur
+   * l'autre avant la corbeille.
+   */
+  app.post('/api/doublons/:id/decision', { preHandler: exiger('gerer', 'AVerifier') }, async (requete) => {
+    const { decision, garderId } = valider(
+      z.object({ decision: z.enum(['gardes', 'supprime']), garderId: z.number().int().positive().optional() }),
+      requete.body,
+    );
+    const paire = await db.doublon.findUnique({ where: { id: Number(requete.params.id) || 0 } });
+    if (!paire) throw introuvable('Paire de doublons');
+    if (paire.decision !== 'en_attente') throw new ErreurHttp(409, 'Cette paire a déjà été tranchée.');
+
+    const options = { utilisateurId: requete.utilisateur.id, ip: requete.ip, log: requete.log };
+    if (decision === 'gardes') {
+      await garderLesDeux(paire, options);
+      return { ok: true };
+    }
+    if (![paire.documentAId, paire.documentBId].includes(garderId)) {
+      throw new ErreurHttp(422, 'Indiquez la pièce à garder.', { erreurs: { garderId: 'La pièce à garder doit être l’une des deux.' } });
+    }
+    const { ecarte } = await ecarterDoublon(paire, garderId, options);
+    return { ok: true, ecarteId: ecarte.id };
   });
 
   // ── Verser une pièce (§6) ─────────────────────────────────────
@@ -186,6 +216,16 @@ export default async function routesDocuments(app) {
         await classerDocument(document, referentiels, { requete, log: requete.log });
       } catch (erreur) {
         requete.log.error?.({ err: erreur }, `Classement automatique en échec pour le document ${document.id}`);
+      }
+
+      // Un rescan d'une pièce déjà au fonds : sûr, il est écarté ; probable,
+      // il est signalé (§9). Un scan sans texte attendra son OCR (worker).
+      if (document.texteOcr) {
+        try {
+          await detecterDoublons({ ids: [document.id], utilisateurId: requete.utilisateur.id, log: requete.log });
+        } catch (erreur) {
+          requete.log.error?.({ err: erreur }, `Recherche de doublons en échec pour le document ${document.id}`);
+        }
       }
 
       const complet = await db.document.findUnique({ where: { id: document.id }, include: { typeDocument: true, marche: true, client: true } });

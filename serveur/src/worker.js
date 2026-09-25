@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import cron from 'node-cron';
 import { db } from './db.js';
 import { ecouter, relever, releverTout } from './services/courriel-imap.js';
+import { detecterDoublons } from './services/arbitrage-doublons.js';
 import { classerLeFonds } from './services/classement-auto.js';
 import { purgerJournal, viderCorbeille } from './services/entretien.js';
 import { resteALire, tesseractDisponible, traiterFile } from './services/ocr.js';
@@ -66,6 +67,16 @@ async function viderFileOcr() {
       // Un scan n'a pas de texte au versement : le classement n'avait alors
       // rien à lire. Maintenant qu'il en a, on le rattrape (§7).
       if (bilan.lus) await classerLeFonds({ log: journal }).catch((e) => journal.error('Classement après OCR :', e.message));
+
+      // Et maintenant qu'on peut le comparer : est-ce un rescan (§9) ?
+      if (bilan.idsLus.length) {
+        await detecterDoublons({ ids: bilan.idsLus, log: journal })
+          .then((d) => {
+            if (d.ecartees.length) journal.log(`Doublons : ${d.ecartees.length} rescan(s) mis en corbeille.`);
+            if (d.aTrancher.length) journal.log(`Doublons : ${d.aTrancher.length} paire(s) probable(s) à trancher.`);
+          })
+          .catch((e) => journal.error('Recherche de doublons après OCR :', e.message));
+      }
     }
   } catch (erreur) {
     journal.error('File OCR en échec :', erreur.message);

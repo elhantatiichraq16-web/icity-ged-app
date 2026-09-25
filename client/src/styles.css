@@ -176,3 +176,21 @@
     transition-duration: 1ms !important;
   }
 }
+
+/* La pastille d'initiales d'un client : une teinte par client, toujours la
+   même (calculée depuis son nom), lisible dans les deux thèmes. */
+.pastille-client {
+  background: hsl(var(--teinte) 70% 94%);
+  color: hsl(var(--teinte) 55% 28%);
+}
+[data-theme='dark'] .pastille-client {
+  background: hsl(var(--teinte) 35% 19%);
+  color: hsl(var(--teinte) 70% 80%);
+}
+
+/* À l'impression (export PDF), une page blanche sans l'habillage de l'écran. */
+@media print {
+  body {
+    background: #fff;
+  }
+}

@@ -7,13 +7,27 @@
  */
 import { z } from 'zod';
 import { confidentialitesVisibles } from '@icity/commun/droits';
-import { CONSERVATIONS, echeanceDe, etatEcheance, phaseDe, piecesManquantes, STATUTS_AFFAIRE } from '@icity/commun/marches';
+import { CONSERVATIONS, echeanceDe, estAppelOffres, etatEcheance, phaseDe, piecesManquantes, statutClient, STATUTS_AFFAIRE, STATUTS_CLIENT } from '@icity/commun/marches';
+import { schemaClient } from '@icity/commun/schemas';
 import { db } from '../db.js';
 import { ErreurHttp, introuvable, valider } from '../erreurs.js';
 import { exiger, exigerConnexion } from '../plugins/authentification.js';
+import { doublonsEnAttente } from '../services/arbitrage-doublons.js';
 import { journaliser } from '../services/journal.js';
-import { piecesParMarche } from '../services/phase-marche.js';
+import { codesParMarche, piecesParMarche } from '../services/phase-marche.js';
 import { nomFichier, versCsv } from '../services/export-csv.js';
+
+/** Ce que l'écran reçoit d'un client, sans ses compteurs. */
+function vueClient(c) {
+  return {
+    id: c.id,
+    nom: c.nom,
+    sigle: c.sigle,
+    interne: c.interne,
+    synonymes: c.synonymes ?? [],
+    domainesEmail: c.domainesEmail ?? [],
+  };
+}
 
 /** Les champs modifiables à la main sur une fiche marché (§11, onglet Informations). */
 const schemaMarche = z.object({
@@ -54,9 +68,12 @@ const schemaEtiquette = z.object({
 });
 
 /** Un marché tel que l'écran l'attend : chiffres calculés compris. */
-function vueMarche(m, pieces = {}, nbDocuments = 0) {
+function vueMarche(m, pieces = {}, nbDocuments = 0, codes = []) {
   const phase = phaseDe(pieces);
   const echeance = echeanceDe({ dateFin: m.dateFin, dateOs: m.dateOs, delaiMois: m.delaiMois });
+  // Un appel d'offres non gagné n'a pas de cycle : rien ne lui manque, et
+  // aucune échéance ne court.
+  const appelOffres = estAppelOffres(codes, m.statutAffaire);
   return {
     id: m.id,
     reference: m.reference,
@@ -83,9 +100,10 @@ function vueMarche(m, pieces = {}, nbDocuments = 0) {
     // Calculés (§5) :
     pieces,
     phase,
-    manquantes: piecesManquantes(pieces, phase),
+    appelOffres,
+    manquantes: appelOffres ? [] : piecesManquantes(pieces, phase),
     echeance,
-    etatEcheance: etatEcheance(echeance, phase),
+    etatEcheance: appelOffres ? 'aucune' : etatEcheance(echeance, phase),
     nbDocuments,
   };
 }
@@ -103,7 +121,7 @@ export default async function routesMarches(app) {
    * HTTP interne.
    */
   async function listerMarches(requete) {
-    const { phase, clientId, incomplets, q } = requete.query;
+    const { phase, clientId, incomplets, q, nature } = requete.query;
 
     const marches = await db.marche.findMany({
       where: {
@@ -123,7 +141,7 @@ export default async function routesMarches(app) {
       orderBy: [{ reference: 'asc' }],
     });
 
-    const pieces = await piecesParMarche();
+    const [pieces, codes] = await Promise.all([piecesParMarche(), codesParMarche()]);
     // Les documents visibles seulement : un Lecteur ne doit pas deviner le
     // nombre de pièces confidentielles d'un marché.
     const comptes = await db.document.groupBy({
@@ -133,7 +151,10 @@ export default async function routesMarches(app) {
     });
     const parMarche = new Map(comptes.map((c) => [c.marcheId, c._count._all]));
 
-    let sortie = marches.map((m) => vueMarche(m, pieces.get(m.id) ?? {}, parMarche.get(m.id) ?? 0));
+    let sortie = marches.map((m) => vueMarche(m, pieces.get(m.id) ?? {}, parMarche.get(m.id) ?? 0, codes.get(m.id) ?? []));
+    // « nature » sépare les marchés gagnés des appels d'offres (deux onglets).
+    if (nature === 'marches') sortie = sortie.filter((m) => !m.appelOffres);
+    if (nature === 'ao') sortie = sortie.filter((m) => m.appelOffres);
     if (phase) sortie = sortie.filter((m) => m.phase === phase);
     if (incomplets === 'true' || incomplets === '1') sortie = sortie.filter((m) => m.manquantes.length > 0);
     return sortie;
@@ -167,7 +188,7 @@ export default async function routesMarches(app) {
         client: m.client?.nom ?? '',
         objet: m.objet ?? '',
         ville: m.ville ?? '',
-        phase: m.phase ?? '',
+        phase: m.appelOffres ? "Appel d'offres" : (m.phase ?? ''),
         statutAffaire: m.statutAffaire ?? '',
         montant: m.montant ?? '',
         documents: m.nbDocuments ?? 0,
@@ -198,8 +219,13 @@ export default async function routesMarches(app) {
     });
 
     const pieces = (await piecesParMarche([id])).get(id) ?? {};
+    const codes = (await codesParMarche([id])).get(id) ?? [];
+    const doublons = await doublonsEnAttente(
+      documents.map((d) => d.id),
+      { confidentialites: visibles },
+    );
     return {
-      ...vueMarche(m, pieces, documents.length),
+      ...vueMarche(m, pieces, documents.length, codes),
       documents: documents.map((d) => ({
         id: d.id,
         titre: d.titre,
@@ -207,6 +233,9 @@ export default async function routesMarches(app) {
         dateDocument: d.dateDocument?.toISOString().slice(0, 10) ?? null,
         etatCircuit: d.etatCircuit,
         source: d.source,
+        pages: d.pages,
+        statutOcr: d.statutOcr,
+        doublons: doublons.get(d.id) ?? [],
       })),
     };
   });
@@ -243,28 +272,110 @@ export default async function routesMarches(app) {
     );
 
     const pieces = (await piecesParMarche([id])).get(id) ?? {};
-    return vueMarche(apres, pieces);
+    const codes = (await codesParMarche([id])).get(id) ?? [];
+    return vueMarche(apres, pieces, 0, codes);
   });
 
   // ── Clients ───────────────────────────────────────────────────
-  app.get('/api/clients', async (requete) => {
-    const clients = await db.client.findMany({
-      orderBy: { nom: 'asc' },
-      include: { _count: { select: { marches: true, documents: true } } },
-    });
+  /**
+   * Les clients, avec leurs compteurs et leur statut.
+   *
+   * Le statut part des mêmes pièces que la phase du tableau des marchés
+   * (`piecesParMarche` puis `phaseDe`) : les deux écrans ne peuvent pas se
+   * contredire. Les pièces en corbeille ne sont pas comptées, comme partout
+   * ailleurs.
+   *
+   * Extraite pour que l'export CSV rende exactement la même liste.
+   */
+  async function listerClients(requete) {
+    const [clients, marches, documents] = await Promise.all([
+      db.client.findMany({ orderBy: { nom: 'asc' } }),
+      db.marche.findMany({ where: { clientId: { not: null } }, select: { id: true, clientId: true, statutAffaire: true } }),
+      db.document.groupBy({ by: ['clientId'], where: { supprimeLe: null, clientId: { not: null } }, _count: { _all: true } }),
+    ]);
+    const ids = marches.map((m) => m.id);
+    const [pieces, codes] = await Promise.all([piecesParMarche(ids), codesParMarche(ids)]);
+
+    // Un appel d'offres non gagné ne fait pas du client un client « avec
+    // marchés » : il est compté à part.
+    const phasesParClient = new Map();
+    const appelsOffresParClient = new Map();
+    for (const m of marches) {
+      if (estAppelOffres(codes.get(m.id) ?? [], m.statutAffaire)) {
+        appelsOffresParClient.set(m.clientId, (appelsOffresParClient.get(m.clientId) ?? 0) + 1);
+        continue;
+      }
+      const phases = phasesParClient.get(m.clientId) ?? [];
+      phases.push(phaseDe(pieces.get(m.id) ?? {}));
+      phasesParClient.set(m.clientId, phases);
+    }
+    const nbDocuments = new Map(documents.map((d) => [d.clientId, d._count._all]));
+
     const { interne } = requete.query;
     return clients
       .filter((c) => (interne === 'true' ? true : !c.interne || interne === 'seuls'))
-      .map((c) => ({
-        id: c.id,
-        nom: c.nom,
-        sigle: c.sigle,
-        interne: c.interne,
-        synonymes: c.synonymes ?? [],
-        domainesEmail: c.domainesEmail ?? [],
-        nbMarches: c._count.marches,
-        nbDocuments: c._count.documents,
-      }));
+      .map((c) => {
+        const phases = phasesParClient.get(c.id) ?? [];
+        return {
+          ...vueClient(c),
+          nbMarches: phases.length,
+          nbMarchesEnCours: phases.filter((p) => p !== 'cloture').length,
+          nbAppelsOffres: appelsOffresParClient.get(c.id) ?? 0,
+          nbDocuments: nbDocuments.get(c.id) ?? 0,
+          statut: statutClient(phases),
+        };
+      });
+  }
+
+  app.get('/api/clients', listerClients);
+
+  /**
+   * Un nouveau maître d'ouvrage.
+   *
+   * Réservé à ceux qui gèrent le référentiel des clients : un client en double
+   * (« TGR » et « Trésorerie Générale ») couperait ses marchés en deux. D'où
+   * aussi le refus d'un nom déjà pris, sans tenir compte des majuscules.
+   */
+  app.post('/api/clients', { preHandler: exiger('gerer', 'Client') }, async (requete, reponse) => {
+    const donnees = valider(schemaClient, requete.body);
+
+    const existant = await db.client.findFirst({ where: { nom: { equals: donnees.nom, mode: 'insensitive' } } });
+    if (existant) {
+      throw new ErreurHttp(409, 'Ce client existe déjà.', { erreurs: { nom: `« ${existant.nom} » est déjà au référentiel.` } });
+    }
+
+    const cree = await db.client.create({ data: donnees });
+    await journaliser(
+      { utilisateurId: requete.utilisateur.id, action: 'client.cree', objetType: 'Client', objetId: cree.id, apres: { nom: cree.nom }, ip: requete.ip },
+      requete.log,
+    );
+    return reponse.code(201).send({ ...vueClient(cree), nbMarches: 0, nbMarchesEnCours: 0, nbAppelsOffres: 0, nbDocuments: 0, statut: statutClient([]) });
+  });
+
+  /** La liste des clients en CSV : mêmes lignes, même ordre que l'écran. */
+  app.get('/api/clients/export.csv', async (requete, reponse) => {
+    const clients = await listerClients(requete);
+    const csv = versCsv({
+      colonnes: [
+        { cle: 'nom', titre: 'Client' },
+        { cle: 'sigle', titre: 'Sigle' },
+        { cle: 'nbMarches', titre: 'Marchés' },
+        { cle: 'nbMarchesEnCours', titre: 'Marchés en cours' },
+        { cle: 'nbDocuments', titre: 'Pièces' },
+        { cle: 'statut', titre: 'Statut' },
+        { cle: 'domaines', titre: 'Domaines e-mail' },
+      ],
+      lignes: clients.map((c) => ({
+        ...c,
+        sigle: c.sigle ?? '',
+        statut: STATUTS_CLIENT[c.statut].nom,
+        domaines: c.domainesEmail.join(', '),
+      })),
+    });
+    return reponse
+      .header('Content-Type', 'text/csv; charset=utf-8')
+      .header('Content-Disposition', `attachment; filename="${nomFichier('clients')}"`)
+      .send(csv);
   });
 
   app.get('/api/clients/:id', async (requete) => {
@@ -277,15 +388,11 @@ export default async function routesMarches(app) {
       include: { client: true, responsable: { select: { id: true, nom: true } } },
       orderBy: { reference: 'asc' },
     });
-    const pieces = await piecesParMarche(marches.map((m) => m.id));
+    const ids = marches.map((m) => m.id);
+    const [pieces, codes] = await Promise.all([piecesParMarche(ids), codesParMarche(ids)]);
     return {
-      id: client.id,
-      nom: client.nom,
-      sigle: client.sigle,
-      interne: client.interne,
-      synonymes: client.synonymes ?? [],
-      domainesEmail: client.domainesEmail ?? [],
-      marches: marches.map((m) => vueMarche(m, pieces.get(m.id) ?? {})),
+      ...vueClient(client),
+      marches: marches.map((m) => vueMarche(m, pieces.get(m.id) ?? {}, 0, codes.get(m.id) ?? [])),
     };
   });
 

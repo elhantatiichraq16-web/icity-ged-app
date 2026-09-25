@@ -15,6 +15,7 @@
     "cle": "node -e \"console.log(require('node:crypto').randomBytes(32).toString('base64'))\"",
     "installer": "node scripts/installer.js",
     "archives": "node --env-file-if-exists=.env scripts/importer-archives.js",
+    "attestations": "node --env-file-if-exists=.env scripts/rattacher-attestations.js",
     "classer": "node --env-file-if-exists=.env scripts/classer.js",
     "doublons": "node --env-file-if-exists=.env scripts/doublons.js",
     "worker": "node --env-file-if-exists=.env src/worker.js",
