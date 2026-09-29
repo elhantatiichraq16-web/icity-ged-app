@@ -9,7 +9,8 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Download, FileText, Search, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Download, FileText, Pencil, Search, Trash2, X } from 'lucide-react';
+import { subject } from '@icity/commun/droits';
 import { api } from '../api.js';
 import { dateCourte, dateHeure } from '../format.js';
 import { Alerte, Badge, Carte, EnTetePage, EtatVide, SqueletteLignes } from '../ui/Elements.jsx';
@@ -20,6 +21,7 @@ import { useToasts } from '../ui/Toasts.jsx';
 import { useSession } from '../auth/session.jsx';
 import { Visionneuse } from '../ui/Visionneuse.jsx';
 import { CircuitDocument } from './CircuitDocument.jsx';
+import { ModalePiece } from './ModifierPiece.jsx';
 
 /** L'état de lecture d'un document, en clair. */
 export const ETATS_OCR = {
@@ -395,6 +397,7 @@ export function PageFicheDocument() {
   const { notifier } = useToasts();
   const { droits } = useSession();
   const [confirme, setConfirme] = useState(false);
+  const [edition, setEdition] = useState(false);
   const document_ = useQuery({ queryKey: ['document', id], queryFn: () => api(`/api/documents/${id}`) });
 
   /**
@@ -424,6 +427,8 @@ export function PageFicheDocument() {
 
   const d = document_.data;
   const estPdf = d.extension === '.pdf';
+  // Les droits sur CETTE pièce : un déposant ne corrige que ses brouillons.
+  const peutModifier = droits.can('modifier', subject('Document', { ...d, versePar: d.versePar?.id ?? null }));
 
   return (
     <div className="animate-apparition">
@@ -446,6 +451,11 @@ export function PageFicheDocument() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {peutModifier && (
+            <Bouton variante="secondaire" icone={Pencil} onClick={() => setEdition(true)}>
+              Modifier
+            </Bouton>
+          )}
           <a href={`/api/documents/${d.id}/telecharger`}>
             <Bouton variante="secondaire" icone={Download}>
               Télécharger
@@ -462,6 +472,8 @@ export function PageFicheDocument() {
       {(d.doublons ?? []).map((doublon) => (
         <AlerteDoublon key={doublon.paireId} document={d} doublon={doublon} />
       ))}
+
+      <ModalePiece piece={d} ouverte={edition} surChangement={setEdition} />
 
       <Confirmation
         ouverte={confirme}

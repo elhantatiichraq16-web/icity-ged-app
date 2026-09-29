@@ -13,9 +13,10 @@ import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
 import { confidentialitesVisibles } from '@icity/commun/droits';
+import { CONFIDENTIALITES } from '@icity/commun/roles';
 import { config } from '../config.js';
 import { db } from '../db.js';
-import { ErreurHttp, introuvable, valider } from '../erreurs.js';
+import { ErreurHttp, interdit, introuvable, valider } from '../erreurs.js';
 import { exiger, exigerConnexion } from '../plugins/authentification.js';
 import { detecterDoublons, doublonsEnAttente, ecarterDoublon, garderLesDeux } from '../services/arbitrage-doublons.js';
 import { journaliser } from '../services/journal.js';
@@ -26,6 +27,21 @@ import { languesInstallees, resteALire, tesseractDisponible, traiterFile } from 
 import { listerSauvegardes, sauvegarder } from '../services/sauvegarde.js';
 
 const PAGE = 50;
+
+/**
+ * Ce qu'on corrige à la main sur une pièce (§7).
+ *
+ * Un rangement fait à la main est un jugement humain : la pièce passe en
+ * classement « manuel », et le classement automatique ne la touche plus —
+ * pas même pour remplir une case laissée vide exprès.
+ */
+const schemaPiece = z.object({
+  titre: z.string().trim().min(2).max(255).optional(),
+  marcheId: z.number().int().positive().nullable().optional(),
+  clientId: z.number().int().positive().nullable().optional(),
+  typeDocumentId: z.number().int().positive().nullable().optional(),
+  confidentialite: z.enum(CONFIDENTIALITES.map((c) => c.code)).optional(),
+});
 
 /** Ce qu'un utilisateur a le droit de voir : sa confidentialité, ou ses dépôts. */
 function filtreVisibilite(utilisateur) {
@@ -127,6 +143,50 @@ export default async function routesDocuments(app) {
       // Les doublons probables encore à trancher (§9), montrés sur la page.
       doublons: (await doublonsEnAttente([d.id], { confidentialites: confidentialitesVisibles(requete.utilisateur.role.code) })).get(d.id) ?? [],
     };
+  });
+
+  // ── Modifier une pièce ────────────────────────────────────────
+  app.patch('/api/documents/:id', async (requete) => {
+    const d = await documentVisible(requete);
+    // Les droits sur CETTE pièce : un déposant ne corrige que ses brouillons.
+    if (!requete.droits.can('modifier', { __caslSubjectType__: 'Document', ...d, versePar: d.verseParId })) throw interdit();
+
+    const champs = valider(schemaPiece, requete.body);
+    const erreurs = {};
+    // On ne range pas une pièce hors de sa propre vue : on la perdrait aussitôt.
+    if (champs.confidentialite && !confidentialitesVisibles(requete.utilisateur.role.code).includes(champs.confidentialite)) {
+      erreurs.confidentialite = 'Ce niveau dépasse ce que votre rôle peut voir.';
+    }
+    const marche = champs.marcheId ? await db.marche.findUnique({ where: { id: champs.marcheId } }) : null;
+    if (champs.marcheId && !marche) erreurs.marcheId = 'Ce marché n’existe pas.';
+    if (champs.clientId && !(await db.client.findUnique({ where: { id: champs.clientId } }))) erreurs.clientId = 'Ce client n’existe pas.';
+    if (champs.typeDocumentId && !(await db.typeDocument.findUnique({ where: { id: champs.typeDocumentId } }))) erreurs.typeDocumentId = 'Ce type n’existe pas.';
+    if (Object.keys(erreurs).length) throw new ErreurHttp(422, 'Certains champs sont à corriger.', { erreurs });
+
+    const data = { ...champs, statutClassement: 'manuel' };
+    // Le client suit le marché, comme au classement automatique — sauf s'il
+    // est précisé, ou déjà renseigné.
+    if (marche?.clientId && !('clientId' in champs) && !d.clientId) data.clientId = marche.clientId;
+
+    const apres = await db.document.update({ where: { id: d.id }, data, include: { typeDocument: true, marche: true, client: true } });
+
+    // La phase se déduit des pièces : l'ancien marché et le nouveau peuvent changer.
+    for (const id of new Set([d.marcheId, apres.marcheId].filter(Boolean))) await recalculerPhase(id);
+
+    const modifies = Object.keys(champs);
+    await journaliser(
+      {
+        utilisateurId: requete.utilisateur.id,
+        action: 'document.modifie',
+        objetType: 'Document',
+        objetId: d.id,
+        avant: Object.fromEntries(modifies.map((c) => [c, d[c]])),
+        apres: champs,
+        ip: requete.ip,
+      },
+      requete.log,
+    );
+    return vueDocument(apres);
   });
 
   /**

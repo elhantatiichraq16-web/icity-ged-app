@@ -163,6 +163,9 @@ export async function classerLeFonds({ limite = 500, log = console } = {}) {
       texteOcr: { not: null },
       // Ce qui a déjà tout n'a rien à gagner d'un nouveau passage.
       OR: [{ marcheId: null }, { typeDocumentId: null }, { clientId: null }],
+      // Une pièce rangée à la main ne se reclasse pas, même là où on a
+      // laissé vide exprès : c'est un jugement humain.
+      statutClassement: { not: 'manuel' },
     },
     orderBy: { creeLe: 'desc' },
     take: limite,

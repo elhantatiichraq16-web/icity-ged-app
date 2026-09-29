@@ -7,7 +7,20 @@
  */
 import { z } from 'zod';
 import { confidentialitesVisibles } from '@icity/commun/droits';
-import { CONSERVATIONS, echeanceDe, estAppelOffres, etatEcheance, phaseDe, piecesManquantes, statutClient, STATUTS_AFFAIRE, STATUTS_CLIENT } from '@icity/commun/marches';
+import {
+  CONSERVATIONS,
+  echeanceDe,
+  estAppelOffres,
+  etatEcheance,
+  extraireLot,
+  normaliserReference,
+  OBJETS_TECHNIQUES,
+  phaseDe,
+  piecesManquantes,
+  statutClient,
+  STATUTS_AFFAIRE,
+  STATUTS_CLIENT,
+} from '@icity/commun/marches';
 import { schemaClient } from '@icity/commun/schemas';
 import { db } from '../db.js';
 import { ErreurHttp, introuvable, valider } from '../erreurs.js';
@@ -47,10 +60,24 @@ const schemaMarche = z.object({
   emplacementPapier: z.string().trim().max(160).nullable().optional(),
   statutAffaire: z.enum(STATUTS_AFFAIRE).nullable().optional(),
   conservation: z.enum(CONSERVATIONS).nullable().optional(),
+  objetTechnique: z.enum(OBJETS_TECHNIQUES).nullable().optional(),
   signe: z.boolean().optional(),
 });
 
+/** À la création, la référence est la seule information obligatoire. */
+const schemaNouveauMarche = schemaMarche.extend({ reference: z.string().trim().min(2).max(80) });
+
 const date = (v) => (v ? new Date(`${v}T00:00:00Z`) : null);
+
+/**
+ * La clé de regroupement d'une affaire (§5), calculée comme à l'import des
+ * archives : la référence normalisée, suivie du lot s'il y en a un. Deux lots
+ * d'un même appel d'offres sont deux contrats, donc deux affaires.
+ */
+export function cleDeReference(reference, lot) {
+  const lu = extraireLot(reference) ?? (lot ? String(lot).trim().toUpperCase() : null);
+  return normaliserReference(reference) + (lu ? `#${lu}` : '');
+}
 
 /** Un type de document. Le code sert au classement automatique (§7). */
 const schemaType = z.object({
@@ -238,6 +265,43 @@ export default async function routesMarches(app) {
         doublons: doublons.get(d.id) ?? [],
       })),
     };
+  });
+
+  // ── Création ──────────────────────────────────────────────────
+  /**
+   * Déclarer une affaire à la main : un marché dont on tient le contrat, ou
+   * un appel d'offres auquel on répond.
+   *
+   * Jusqu'ici une affaire ne naissait que d'un import d'archives ou d'une
+   * attestation. Les pièces qui citent sa référence la rejoindront ensuite
+   * seules : le classement repasse après chaque lecture.
+   *
+   * Si la clé existe déjà, on ne crée rien : l'écran reçoit l'affaire
+   * existante, pour y mener plutôt que de la doubler.
+   */
+  app.post('/api/marches', { preHandler: exiger('creer', 'Marche') }, async (requete, reponse) => {
+    const champs = valider(schemaNouveauMarche, requete.body);
+    const cle = cleDeReference(champs.reference, champs.lot);
+
+    const existant = await db.marche.findUnique({ where: { referenceNormalisee: cle } });
+    if (existant) {
+      return reponse.code(409).send({
+        message: `L’affaire « ${existant.reference} » existe déjà.`,
+        existant: { id: existant.id, reference: existant.reference },
+      });
+    }
+
+    const data = { ...champs, referenceNormalisee: cle, variantes: [champs.reference] };
+    for (const champDate of ['dateSignature', 'dateOs', 'dateFin']) {
+      if (champDate in data) data[champDate] = date(data[champDate]);
+    }
+    const cree = await db.marche.create({ data, include: { client: true, responsable: { select: { id: true, nom: true } } } });
+
+    await journaliser(
+      { utilisateurId: requete.utilisateur.id, action: 'marche.cree', objetType: 'Marche', objetId: cree.id, apres: champs, ip: requete.ip },
+      requete.log,
+    );
+    return reponse.code(201).send(vueMarche(cree));
   });
 
   // ── Modification (onglet Informations) ────────────────────────

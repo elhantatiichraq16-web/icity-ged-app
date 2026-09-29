@@ -34,19 +34,54 @@ async function contexte(compte) {
   return { compte, clients, marches };
 }
 
+/**
+ * Le mot de passe d'application, tel que le serveur l'attend.
+ *
+ * Google l'affiche en quatre blocs, « abcd efgh ijkl mnop » : les espaces ne
+ * servent qu'à la lecture, et on colle souvent le tout. Un mot de passe
+ * d'application n'en contient jamais : on les retire ici, pour la relève comme
+ * pour l'envoi.
+ */
+export function motDePasseDe(compte) {
+  return dechiffrer(compte.motDePasse).replace(/\s+/g, '');
+}
+
+/**
+ * La raison d'un échec de connexion, en clair pour l'écran Paramètres.
+ *
+ * ImapFlow ne dit que « Command failed » : la vraie cause est dans la réponse
+ * du serveur, et c'est presque toujours le mot de passe.
+ */
+function raisonEchec(erreur, compte) {
+  if (!erreur.authenticationFailed) {
+    return erreur.responseText ? `${erreur.message} (${erreur.responseText})` : erreur.message;
+  }
+  const conseil = /(gmail|googlemail)\.com$/i.test(compte.serveur)
+    ? ` Il faut un mot de passe d'application Google (16 lettres), créé pour ${compte.adresse}.`
+    : '';
+  return `Mot de passe refusé par le serveur (« ${erreur.responseText ?? erreur.message} »).${conseil}`;
+}
+
 /** Ouvre la connexion IMAP d'un compte. */
 export async function connecter(compte) {
   const client = new ImapFlow({
     host: compte.serveur,
     port: compte.port,
     secure: compte.securite === 'ssl',
-    auth: { user: compte.adresse, pass: dechiffrer(compte.motDePasse) },
+    auth: { user: compte.adresse, pass: motDePasseDe(compte) },
     logger: false,
     // Sur un PC lent, la poignée de main peut traîner.
     greetingTimeout: 20_000,
     socketTimeout: 120_000,
   });
-  await client.connect();
+  try {
+    await client.connect();
+  } catch (erreur) {
+    // Après un refus, le socket reste ouvert : sans cette fermeture, il
+    // expirait deux minutes plus tard en « erreur non rattrapée » du worker.
+    client.close();
+    throw new Error(raisonEchec(erreur, compte), { cause: erreur });
+  }
   return client;
 }
 

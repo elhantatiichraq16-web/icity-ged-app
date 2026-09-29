@@ -43,7 +43,7 @@ function majorite(ids) {
 export async function rattacherAttestations({ appliquer = true, ids, utilisateurId = null, log = console } = {}) {
   const [attestations, marches, internes] = await Promise.all([
     db.document.findMany({
-      where: { supprimeLe: null, marcheId: null, typeDocument: { code: 'ATT' }, ...(ids ? { id: { in: ids } } : {}) },
+      where: { supprimeLe: null, marcheId: null, typeDocument: { code: 'ATT' }, statutClassement: { not: 'manuel' }, ...(ids ? { id: { in: ids } } : {}) },
       select: { id: true, texteOcr: true, clientId: true },
       orderBy: { id: 'asc' },
     }),

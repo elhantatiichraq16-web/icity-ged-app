@@ -26,6 +26,7 @@ import routesNotifications from './routes/notifications.js';
 import routesProfil from './routes/profil.js';
 import routesRecherche from './routes/recherche.js';
 import routesTableauBord from './routes/tableau-bord.js';
+import routesTri from './routes/tri.js';
 import routesUtilisateurs from './routes/utilisateurs.js';
 
 const DOSSIER_CLIENT = path.resolve(RACINE_SERVEUR, '..', 'client', 'dist');
@@ -89,6 +90,7 @@ export async function construireApp({ journal = !config.estTest } = {}) {
   await app.register(routesRecherche);
   await app.register(routesTableauBord);
   await app.register(routesCorbeille);
+  await app.register(routesTri);
   await app.register(routesCourriel);
   await app.register(routesCircuit);
   await app.register(routesNotifications);

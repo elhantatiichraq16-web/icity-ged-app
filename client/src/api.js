@@ -19,6 +19,8 @@ export class ErreurApi extends Error {
     this.statut = statut;
     /** @type {Record<string, string>} */
     this.erreurs = corps?.erreurs ?? {};
+    /** Le reste de la réponse : un 409 y désigne l'élément qui existe déjà. */
+    this.donnees = corps ?? null;
   }
 }
 

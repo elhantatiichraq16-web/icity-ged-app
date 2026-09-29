@@ -3,14 +3,17 @@
  * `phase` : la phase de livraison où l'écran sera construit.
  * `droit` : l'entrée n'apparaît que si l'utilisateur a ce droit.
  */
-import { Building2, FileText, FolderKanban, Inbox, LayoutDashboard, Mail, Settings, Trash2, Upload } from 'lucide-react';
+import { Building2, ClipboardCheck, FileText, FolderInput, FolderKanban, Inbox, LayoutDashboard, Mail, Settings, Trash2, Upload } from 'lucide-react';
 
 export const NAVIGATION = [
   { chemin: '/', libelle: 'Tableau de bord', icone: LayoutDashboard, phase: 6 },
   { chemin: '/marches', libelle: 'Marchés', icone: FolderKanban, phase: 2 },
   { chemin: '/documents', libelle: 'Documents', icone: FileText, phase: 3 },
   { chemin: '/verser', libelle: 'Verser', icone: Upload, phase: 3, droit: ['verser', 'Document'] },
+  // Les deux files du tri : ce que le classement automatique a laissé.
+  { chemin: '/a-classer', libelle: 'À classer', icone: FolderInput, phase: 9, droit: ['gerer', 'AVerifier'] },
   { chemin: '/courriel', libelle: 'Courriel', icone: Mail, phase: 1, droit: ['lire', 'Mail'] },
+  { chemin: '/a-verifier', libelle: 'À vérifier', icone: ClipboardCheck, phase: 9, droit: ['gerer', 'AVerifier'] },
   { chemin: '/corbeille', libelle: 'Corbeille', icone: Trash2, phase: 7, droit: ['gerer', 'AVerifier'] },
   { chemin: '/clients', libelle: 'Clients', icone: Building2, phase: 2 },
   { chemin: '/parametres', libelle: 'Paramètres', icone: Settings, phase: 1, droit: ['gerer', 'Utilisateur'] },

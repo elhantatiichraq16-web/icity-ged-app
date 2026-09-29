@@ -9,7 +9,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowRight, ArrowUp, Check, Download, LoaderCircle, Minus, Search, Upload, X } from 'lucide-react';
+import { ArrowDown, ArrowRight, ArrowUp, Check, Download, LoaderCircle, Minus, Plus, Search, Upload, X } from 'lucide-react';
 import { ORDRE_PHASES, PHASES, PIECES_CYCLE, STATUTS_APPEL_OFFRES } from '@icity/commun/marches';
 import { api } from '../api.js';
 import { dateCourte } from '../format.js';
@@ -321,28 +321,35 @@ export function PageMarches() {
         titre="Marchés"
         description="Chaque affaire, sa phase calculée d’après les pièces versées, et ce qui manque à son dossier."
         actions={
-          onglet === 'marches' && (
           <div className="flex items-center gap-3">
-            <Badge ton="cyan">{total} marchés</Badge>
-            {/* Un lien, pas un appel : le navigateur enregistre le fichier
-                lui-même, sans que la page ait à le tenir en mémoire. */}
-            <Bouton
-              variante="secondaire"
-              taille="petit"
-              icone={Download}
-              onClick={() => {
-                const filtres = new URLSearchParams({ nature: 'marches' });
-                if (phase) filtres.set('phase', phase);
-                if (clientId) filtres.set('clientId', clientId);
-                if (incomplets) filtres.set('incomplets', 'true');
-                if (recherche.trim()) filtres.set('q', recherche.trim());
-                window.location.href = `/api/marches/export.csv?${filtres}`;
-              }}
-            >
-              Exporter
-            </Bouton>
+            {onglet === 'marches' && (
+              <>
+                <Badge ton="cyan">{total} marchés</Badge>
+                {/* Un lien, pas un appel : le navigateur enregistre le fichier
+                    lui-même, sans que la page ait à le tenir en mémoire. */}
+                <Bouton
+                  variante="secondaire"
+                  taille="petit"
+                  icone={Download}
+                  onClick={() => {
+                    const filtres = new URLSearchParams({ nature: 'marches' });
+                    if (phase) filtres.set('phase', phase);
+                    if (clientId) filtres.set('clientId', clientId);
+                    if (incomplets) filtres.set('incomplets', 'true');
+                    if (recherche.trim()) filtres.set('q', recherche.trim());
+                    window.location.href = `/api/marches/export.csv?${filtres}`;
+                  }}
+                >
+                  Exporter
+                </Bouton>
+              </>
+            )}
+            {droits.can('creer', 'Marche') && (
+              <Bouton taille="petit" icone={Plus} onClick={() => aller(onglet === 'ao' ? '/marches/nouveau?nature=ao' : '/marches/nouveau')}>
+                {onglet === 'ao' ? 'Nouvel appel d’offres' : 'Nouveau marché'}
+              </Bouton>
+            )}
           </div>
-          )
         }
       />
 

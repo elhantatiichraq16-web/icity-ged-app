@@ -20,8 +20,8 @@
 import path from 'node:path';
 import nodemailer from 'nodemailer';
 import { db } from '../db.js';
-import { dechiffrer } from '../securite/crypto.js';
 import { filDe } from './courriel-entrant.js';
+import { motDePasseDe } from './courriel-imap.js';
 import { cheminComplet } from './stockage.js';
 
 /** Gmail en SMTP : 465 en SSL direct, le même mot de passe d'application. */
@@ -42,7 +42,7 @@ function transportDe(compte) {
     host: serveurSmtp(compte.serveur),
     port: PORT_SMTP,
     secure: true,
-    auth: { user: compte.adresse, pass: dechiffrer(compte.motDePasse) },
+    auth: { user: compte.adresse, pass: motDePasseDe(compte) },
   });
 }
 

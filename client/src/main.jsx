@@ -13,11 +13,13 @@ import { PageCorbeille } from './pages/Corbeille.jsx';
 import { PageArrivees, PageCourriel } from './pages/Courriel.jsx';
 import { PageFicheMarche } from './pages/FicheMarche.jsx';
 import { PageMarches } from './pages/Marches.jsx';
+import { PageNouveauMarche } from './pages/NouveauMarche.jsx';
 import { PageParametres } from './pages/Parametres.jsx';
 import { PageProfil } from './pages/Profil.jsx';
 import { PageRecherche } from './pages/Recherche.jsx';
 import { PageVerser } from './pages/Verser.jsx';
 import { PageIntrouvable } from './pages/Simples.jsx';
+import { PageAClasser, PageAVerifier } from './pages/Tri.jsx';
 import { Pictogramme } from './ui/Logo.jsx';
 import { Rattrapage } from './ui/Rattrapage.jsx';
 import { FournisseurToasts } from './ui/Toasts.jsx';
@@ -126,6 +128,17 @@ const routeur = createBrowserRouter([
               { path: '/documents/:id', element: <PageFicheDocument /> },
               { path: '/clients', element: <PageClients /> },
               { path: '/clients/:id', element: <PageFicheClient /> },
+              {
+                element: <Exige action="creer" sujet="Marche" />,
+                children: [{ path: '/marches/nouveau', element: <PageNouveauMarche /> }],
+              },
+              {
+                element: <Exige action="gerer" sujet="AVerifier" />,
+                children: [
+                  { path: '/a-classer', element: <PageAClasser /> },
+                  { path: '/a-verifier', element: <PageAVerifier /> },
+                ],
+              },
               {
                 element: <Exige action="gerer" sujet="Utilisateur" />,
                 children: [{ path: '/parametres/*', element: <PageParametres /> }],
