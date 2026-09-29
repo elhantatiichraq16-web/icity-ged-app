@@ -2,6 +2,9 @@
  * Les champs de formulaire. Chacun a toujours un libellé relié (htmlFor),
  * et son message d'erreur est annoncé par les lecteurs d'écran
  * (aria-describedby + aria-invalid) : la couleur seule ne suffit pas.
+ *
+ * `enLigne` met le libellé à gauche du champ sur écran large, comme sur une
+ * fiche ; sur téléphone, il repasse au-dessus.
  */
 import { forwardRef, useId, useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
@@ -12,22 +15,22 @@ const BASE_CHAMP =
   'hover:border-trait-fort focus:bg-surface focus:outline-none focus:border-cyan focus:shadow-[0_0_0_4px_color-mix(in_oklab,var(--cyan),transparent_85%)] ' +
   'disabled:opacity-60';
 
-function Enveloppe({ id, libelle, aide, erreur, children, className, facultatif }) {
+function Enveloppe({ id, libelle, aide, erreur, children, className, facultatif, enLigne }) {
   return (
-    <div className={cx('grid gap-1.5', className)}>
+    <div className={cx('grid gap-1.5', enLigne && 'sm:grid-cols-[10.5rem_minmax(0,1fr)] sm:gap-x-4', className)}>
       {libelle && (
-        <label htmlFor={id} className="text-[12.5px] font-semibold text-encre-2">
+        <label htmlFor={id} className={cx('text-[12.5px] font-semibold text-encre-2', enLigne && 'sm:pt-3')}>
           {libelle}
           {facultatif && <span className="font-normal text-encre-3"> (facultatif)</span>}
         </label>
       )}
       {children}
       {erreur ? (
-        <p id={`${id}-erreur`} className="text-[12.5px] font-medium text-alerte-texte">
+        <p id={`${id}-erreur`} className={cx('text-[12.5px] font-medium text-alerte-texte', enLigne && 'sm:col-start-2')}>
           {erreur}
         </p>
       ) : aide ? (
-        <p id={`${id}-aide`} className="text-[12.5px] text-encre-3">
+        <p id={`${id}-aide`} className={cx('text-[12.5px] text-encre-3', enLigne && 'sm:col-start-2')}>
           {aide}
         </p>
       ) : null}
@@ -90,10 +93,10 @@ export const ChampMotDePasse = forwardRef(function ChampMotDePasse({ libelle = '
   );
 });
 
-export const Selection = forwardRef(function Selection({ libelle, aide, erreur, className, children, ...reste }, ref) {
+export const Selection = forwardRef(function Selection({ libelle, aide, erreur, className, children, enLigne, ...reste }, ref) {
   const id = useId();
   return (
-    <Enveloppe id={id} libelle={libelle} aide={aide} erreur={erreur} className={className}>
+    <Enveloppe id={id} libelle={libelle} aide={aide} erreur={erreur} className={className} enLigne={enLigne}>
       <select ref={ref} id={id} className={cx(BASE_CHAMP, 'h-11 pr-8', erreur ? 'border-alerte' : 'border-trait')} {...aria(id, erreur, aide)} {...reste}>
         {children}
       </select>

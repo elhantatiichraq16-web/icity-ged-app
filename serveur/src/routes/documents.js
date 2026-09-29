@@ -93,12 +93,15 @@ export default async function routesDocuments(app) {
 
   // ── Liste ─────────────────────────────────────────────────────
   app.get('/api/documents', async (requete) => {
-    const { marcheId, clientId, typeId, statutOcr, source, sansMarche, q, page = '1' } = requete.query;
+    const { marcheId, clientId, typeId, statutOcr, source, sansMarche, q, ids, page = '1' } = requete.query;
     const numero = Math.max(1, Number(page) || 1);
+    // Les pièces d'un versement, que l'écran suit jusqu'à la fin de leur lecture.
+    const listeIds = ids === undefined ? null : String(ids).split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, PAGE);
 
     const where = {
       supprimeLe: null,
       ...filtreVisibilite(requete.utilisateur),
+      ...(listeIds ? { id: { in: listeIds } } : {}),
       ...(marcheId ? { marcheId: Number(marcheId) } : {}),
       ...(sansMarche === 'true' ? { marcheId: null } : {}),
       ...(clientId ? { clientId: Number(clientId) } : {}),
@@ -232,19 +235,37 @@ export default async function routesDocuments(app) {
       await pipeline(fichier.file, createWriteStream(provisoire));
       if (fichier.file.truncated) throw new ErreurHttp(413, 'Fichier trop lourd : 50 Mo au plus.');
 
-      const champ = (nom) => {
+      const texte = (nom) => {
         const v = fichier.fields?.[nom];
         const valeur = Array.isArray(v) ? v[0]?.value : v?.value;
-        return valeur ? Number(valeur) || null : null;
+        return typeof valeur === 'string' && valeur.trim() ? valeur.trim() : null;
       };
+      const nombre = (nom) => Number(texte(nom)) || null;
+
+      // La fiche du versement (maquette A10) : ce que le déposant a indiqué
+      // fait foi, il doit donc exister — et une confidentialité ne dépasse
+      // pas ce que son rôle voit, comme au rangement à la main.
+      const fiche = {
+        marcheId: nombre('marcheId'),
+        clientId: nombre('clientId'),
+        typeDocumentId: nombre('typeDocumentId'),
+        confidentialite: texte('confidentialite') ?? 'interne',
+      };
+      const erreurs = {};
+      if (!CONFIDENTIALITES.some((c) => c.code === fiche.confidentialite)) erreurs.confidentialite = 'Ce niveau de confidentialité n’existe pas.';
+      else if (!confidentialitesVisibles(requete.utilisateur.role.code).includes(fiche.confidentialite)) {
+        erreurs.confidentialite = 'Ce niveau dépasse ce que votre rôle peut voir.';
+      }
+      if (fiche.marcheId && !(await db.marche.findUnique({ where: { id: fiche.marcheId } }))) erreurs.marcheId = 'Ce marché n’existe pas.';
+      if (fiche.clientId && !(await db.client.findUnique({ where: { id: fiche.clientId } }))) erreurs.clientId = 'Ce client n’existe pas.';
+      if (fiche.typeDocumentId && !(await db.typeDocument.findUnique({ where: { id: fiche.typeDocumentId } }))) erreurs.typeDocumentId = 'Ce type n’existe pas.';
+      if (Object.keys(erreurs).length) throw new ErreurHttp(422, 'Certains champs sont à corriger.', { erreurs });
 
       const { document, doublon, cree } = await verserFichier(provisoire, {
         // Le nom d'origine du navigateur est conservé pour l'affichage, mais
         // le fichier est stocké sous un UUID (§13).
         titre: undefined,
-        marcheId: champ('marcheId'),
-        clientId: champ('clientId'),
-        typeDocumentId: champ('typeDocumentId'),
+        ...fiche,
         source: 'versement',
         verseParId: requete.utilisateur.id,
         nomOrigine: fichier.filename,
@@ -259,7 +280,10 @@ export default async function routesDocuments(app) {
       }
 
       if (document.marcheId) await recalculerPhase(document.marcheId);
-      await journaliser({ utilisateurId: requete.utilisateur.id, action: 'document.verse', objetType: 'Document', objetId: document.id, commentaire: fichier.filename, ip: requete.ip }, requete.log);
+      await journaliser(
+        { utilisateurId: requete.utilisateur.id, action: 'document.verse', objetType: 'Document', objetId: document.id, apres: fiche, commentaire: fichier.filename, ip: requete.ip },
+        requete.log,
+      );
 
       /*
        * Le classement s'applique tout de suite (§7).
