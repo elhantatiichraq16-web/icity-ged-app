@@ -33,7 +33,8 @@ async function ecouterLesComptes() {
       journal.log(`Écoute IMAP active sur ${compte.adresse} (${compte.dossierSurveille}).`);
     } catch (erreur) {
       // IDLE indisponible : la relève périodique prend le relais (§10 bis).
-      journal.error(`Écoute impossible sur ${compte.adresse} : ${erreur.message}. La relève toutes les 10 minutes suffira.`);
+      // Le message finit souvent par un point (raisonEchec) : on n'en ajoute pas un second.
+      journal.error(`Écoute impossible sur ${compte.adresse} : ${erreur.message.replace(/\.$/, '')}. La relève toutes les 10 minutes suffira.`);
     }
   }
 }
