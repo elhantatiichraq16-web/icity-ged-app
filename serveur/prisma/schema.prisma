@@ -63,6 +63,7 @@ model Utilisateur {
   marchesSuivis   Marche[]          @relation("MarchesSuivis")
   documentsVerses Document[]        @relation("DocumentsVerses")
   versionsDeposees DocumentVersion[] @relation("VersionsDeposees")
+  achatsSuivis    LigneAchat[]      @relation("SuiviAchat")
 
   @@map("users")
 }
@@ -220,10 +221,115 @@ model Marche {
 
   documents Document[]
   mails     Mail[]
+  lignesAchat          LigneAchat[]
+  commandesFournisseur CommandeFournisseur[]
 
   @@index([clientId])
   @@index([phase])
   @@map("marches")
+}
+
+/// Un fournisseur de matériel : INGRAM, un distributeur, un installateur…
+model Fournisseur {
+  id         Int     @id @default(autoincrement())
+  nom        String  @unique @db.VarChar(160)
+  contact    String? @db.VarChar(160)
+  telephone  String? @db.VarChar(40)
+  email      String? @db.VarChar(191)
+  /// Ses conditions habituelles : « 13 % d'avance, reste à 60 jours ».
+  conditions String? @db.VarChar(255)
+  notes      String? @db.Text
+
+  creeLe    DateTime @default(now()) @map("cree_le")
+  modifieLe DateTime @updatedAt @map("modifie_le")
+
+  lignes    LigneAchat[]
+  commandes CommandeFournisseur[]
+
+  @@map("fournisseurs")
+}
+
+/// Une ligne d'achat d'un marché — une ligne de la feuille « ÉTAT DES
+/// ACHATS » : un matériel, son budget, son achat, sa vente, son suivi.
+/// Les totaux et la marge se calculent (commun/achats.js) : ils ne se
+/// stockent pas, donc ne peuvent pas être faux.
+model LigneAchat {
+  id                 Int          @id @default(autoincrement())
+  marcheId           Int          @map("marche_id")
+  marche             Marche       @relation(fields: [marcheId], references: [id], onDelete: Cascade)
+  /// Le numéro de la ligne au bordereau de l'appel d'offres (2, 3, 11…).
+  numero             String?      @db.VarChar(20)
+  categorie          String       @db.VarChar(80)
+  designation        String       @db.VarChar(255)
+  quantite           Decimal      @db.Decimal(12, 2)
+  /// Le prix unitaire prévu à l'appel d'offres (« P.U. AO »), hors taxes.
+  puBudget           Decimal?     @map("pu_budget") @db.Decimal(14, 2)
+  puAchat            Decimal?     @map("pu_achat") @db.Decimal(14, 2)
+  puVente            Decimal?     @map("pu_vente") @db.Decimal(14, 2)
+  marque             String?      @db.VarChar(120)
+  referenceOffre     String?      @map("reference_offre") @db.VarChar(160)
+  referenceAchat     String?      @map("reference_achat") @db.VarChar(160)
+  fournisseurId      Int?         @map("fournisseur_id")
+  fournisseur        Fournisseur? @relation(fields: [fournisseurId], references: [id], onDelete: SetNull)
+  conditionsPaiement String?      @map("conditions_paiement") @db.VarChar(160)
+  delaiLivraison     String?      @map("delai_livraison") @db.VarChar(120)
+  statut             String       @default("en_attente") @db.VarChar(30)
+  /// La livraison attendue (ETD). Le commentaire est à part : le classeur
+  /// mélangeait les deux dans la même colonne.
+  etd                DateTime?    @db.Date
+  commentaire        String?      @db.Text
+  commandeId         Int?         @map("commande_id")
+  commande           CommandeFournisseur? @relation(fields: [commandeId], references: [id], onDelete: SetNull)
+  /// L'ordre d'affichage dans le marché, celui du classeur.
+  ordre              Int          @default(0)
+  /// Qui a changé le statut, et quand : remplace « Date de mise à jour —
+  /// Responsable » écrit à la main en tête du classeur.
+  statutModifieLe    DateTime?    @map("statut_modifie_le")
+  statutModifieParId Int?         @map("statut_modifie_par")
+  statutModifiePar   Utilisateur? @relation("SuiviAchat", fields: [statutModifieParId], references: [id], onDelete: SetNull)
+
+  creeLe    DateTime @default(now()) @map("cree_le")
+  modifieLe DateTime @updatedAt @map("modifie_le")
+
+  @@index([marcheId])
+  @@index([fournisseurId])
+  @@index([statut])
+  @@map("lignes_achat")
+}
+
+/// Une commande à un fournisseur et son paiement — un bloc de la feuille
+/// « PAIEMENT » : plusieurs lignes, un montant TTC, une avance, un reste,
+/// une modalité et une échéance.
+model CommandeFournisseur {
+  id             Int         @id @default(autoincrement())
+  marcheId       Int         @map("marche_id")
+  marche         Marche      @relation(fields: [marcheId], references: [id], onDelete: Cascade)
+  fournisseurId  Int         @map("fournisseur_id")
+  fournisseur    Fournisseur @relation(fields: [fournisseurId], references: [id], onDelete: Restrict)
+  /// Vide tant que la facture n'est pas arrivée : l'écran montre alors le
+  /// total des lignes, toutes taxes comprises, comme estimation.
+  montantTtc     Decimal?    @map("montant_ttc") @db.Decimal(14, 2)
+  avancePourcent Decimal     @default(0) @map("avance_pourcent") @db.Decimal(5, 2)
+  modalite       String      @db.VarChar(20)
+  /// La date du bon de commande : le départ du délai de livraison.
+  dateCommande   DateTime?   @map("date_commande") @db.Date
+  dateFacture    DateTime?   @map("date_facture") @db.Date
+  /// Saisie seulement pour un effet daté ; sinon, elle se calcule.
+  echeance       DateTime?   @db.Date
+  avancePayeeLe  DateTime?   @map("avance_payee_le") @db.Date
+  soldePayeLe    DateTime?   @map("solde_paye_le") @db.Date
+  notes          String?     @db.Text
+
+  creeLe    DateTime @default(now()) @map("cree_le")
+  modifieLe DateTime @updatedAt @map("modifie_le")
+
+  lignes LigneAchat[]
+  /// Le bon de commande, les bons de livraison et les factures du fournisseur.
+  pieces Document[]
+
+  @@index([marcheId])
+  @@index([fournisseurId])
+  @@map("commandes_fournisseur")
 }
 
 /// Un document du fonds. La phase 3 y ajoutera le fichier, l'empreinte et
@@ -233,6 +339,10 @@ model Document {
   titre           String        @db.VarChar(255)
   marcheId        Int?          @map("marche_id")
   marche          Marche?       @relation(fields: [marcheId], references: [id], onDelete: SetNull)
+  /// Une pièce d'un fournisseur (bon de commande, livraison, facture) : la
+  /// commande qu'elle fait avancer.
+  commandeFournisseurId Int?    @map("commande_fournisseur_id")
+  commandeFournisseur   CommandeFournisseur? @relation(fields: [commandeFournisseurId], references: [id], onDelete: SetNull)
   clientId        Int?          @map("client_id")
   client          Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
   typeDocumentId  Int?          @map("type_document_id")
@@ -288,6 +398,7 @@ model Document {
   piecesJointes PieceJointeMail[]
 
   @@index([marcheId])
+  @@index([commandeFournisseurId])
   @@index([clientId])
   @@index([typeDocumentId])
   @@index([supprimeLe])

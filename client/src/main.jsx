@@ -36,6 +36,7 @@ import './styles.css';
 const PageTableauDeBord = lazy(() => import('./pages/TableauDeBord.jsx').then((m) => ({ default: m.PageTableauDeBord })));
 const PageDocuments = lazy(() => import('./pages/Documents.jsx').then((m) => ({ default: m.PageDocuments })));
 const PageFicheDocument = lazy(() => import('./pages/Documents.jsx').then((m) => ({ default: m.PageFicheDocument })));
+const PageAchats = lazy(() => import('./pages/Achats.jsx').then((m) => ({ default: m.PageAchats })));
 
 const clientRequetes = new QueryClient({
   defaultOptions: {
@@ -128,6 +129,10 @@ const routeur = createBrowserRouter([
               { path: '/documents/:id', element: <PageFicheDocument /> },
               { path: '/clients', element: <PageClients /> },
               { path: '/clients/:id', element: <PageFicheClient /> },
+              {
+                element: <Exige action="lire" sujet="Achat" />,
+                children: [{ path: '/achats', element: <PageAchats /> }],
+              },
               {
                 element: <Exige action="creer" sujet="Marche" />,
                 children: [{ path: '/marches/nouveau', element: <PageNouveauMarche /> }],

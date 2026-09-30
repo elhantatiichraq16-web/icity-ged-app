@@ -3,7 +3,7 @@
  * pièces rangées par étape avec les manquantes en rouge, puis les onglets
  * Documents / Échanges / Journal / Informations.
  */
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ArrowLeft, Check, ChevronRight, FileText, Upload, X } from 'lucide-react';
@@ -20,8 +20,12 @@ import { useToasts } from '../ui/Toasts.jsx';
 import { ETATS_OCR } from './Documents.jsx';
 import { BadgeEtatMarche, CLE_MARCHES } from './Marches.jsx';
 
+// Chargé à l'ouverture de l'onglet seulement, comme l'écran Achats lui-même.
+const AchatsDuMarche = lazy(() => import('./Achats.jsx').then((m) => ({ default: m.AchatsDuMarche })));
+
 const ONGLETS = [
   { cle: 'documents', libelle: 'Documents' },
+  { cle: 'achats', libelle: 'Achats' },
   { cle: 'echanges', libelle: 'Échanges', phase: 8 },
   { cle: 'journal', libelle: 'Journal', phase: 9 },
   { cle: 'informations', libelle: 'Informations' },
@@ -70,6 +74,17 @@ export function PageFicheMarche() {
       </nav>
 
       {onglet === 'documents' && <OngletDocuments m={m} />}
+      {onglet === 'achats' && (
+        <Suspense
+          fallback={
+            <Carte className="p-6">
+              <SqueletteLignes lignes={4} />
+            </Carte>
+          }
+        >
+          <AchatsDuMarche marcheId={m.id} />
+        </Suspense>
+      )}
       {onglet === 'informations' && <OngletInformations m={m} />}
       {(onglet === 'echanges' || onglet === 'journal') && (
         <Carte>

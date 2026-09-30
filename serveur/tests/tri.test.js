@@ -78,6 +78,16 @@ describe('créer une affaire à la main', () => {
     expect((await (await connecte('lecteur'))('POST', '/api/marches', { reference: '13/2018' })).statusCode).toBe(403);
     expect((await (await connecte('chef_projet'))('POST', '/api/marches', { objet: 'sans référence' })).statusCode).toBe(422);
   });
+
+  it('une référence provisoire remplacée par la vraie met sa clé à jour, sans doubler une autre affaire', async () => {
+    const requete = await connecte('chef_projet');
+    const provisoire = (await requete('POST', '/api/marches', { reference: 'PROJET ESSAI' })).json();
+    await db.marche.create({ data: { reference: '13/2018', referenceNormalisee: '13/2018' } });
+
+    expect((await requete('PATCH', `/api/marches/${provisoire.id}`, { reference: '13/2018' })).statusCode).toBe(409);
+    expect((await requete('PATCH', `/api/marches/${provisoire.id}`, { reference: '14/2018' })).statusCode).toBe(200);
+    expect((await db.marche.findUniqueOrThrow({ where: { id: provisoire.id } })).referenceNormalisee).toBe('14/2018');
+  });
 });
 
 describe('ranger une pièce à la main', () => {

@@ -18,6 +18,7 @@ import { detecterDoublons } from './services/arbitrage-doublons.js';
 import { classerLeFonds } from './services/classement-auto.js';
 import { purgerJournal, viderCorbeille } from './services/entretien.js';
 import { resteALire, tesseractDisponible, traiterFile } from './services/ocr.js';
+import { lireFacturesApresOcr } from './services/suivi-achats.js';
 
 const journal = console;
 
@@ -68,6 +69,14 @@ async function viderFileOcr() {
       // Un scan n'a pas de texte au versement : le classement n'avait alors
       // rien à lire. Maintenant qu'il en a, on le rattrape (§7).
       if (bilan.lus) await classerLeFonds({ log: journal }).catch((e) => journal.error('Classement après OCR :', e.message));
+
+      // Une facture de fournisseur scannée : son montant et sa date vont
+      // maintenant sur sa commande, d'où l'échéance du paiement.
+      if (bilan.idsLus.length) {
+        await lireFacturesApresOcr(bilan.idsLus, { log: journal })
+          .then((n) => n && journal.log(`Achats : ${n} facture(s) de fournisseur lue(s) et reportée(s) sur leur commande.`))
+          .catch((e) => journal.error('Lecture des factures après OCR :', e.message));
+      }
 
       // Et maintenant qu'on peut le comparer : est-ce un rescan (§9) ?
       if (bilan.idsLus.length) {

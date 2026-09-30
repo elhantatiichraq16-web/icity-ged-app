@@ -6,7 +6,7 @@
  * (§13). Le nom réel du fichier (UUID) n'apparaît nulle part.
  */
 import crypto from 'node:crypto';
-import { createReadStream, createWriteStream } from 'node:fs';
+import { createWriteStream } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,7 +21,7 @@ import { exiger, exigerConnexion } from '../plugins/authentification.js';
 import { detecterDoublons, doublonsEnAttente, ecarterDoublon, garderLesDeux } from '../services/arbitrage-doublons.js';
 import { journaliser } from '../services/journal.js';
 import { recalculerPhase } from '../services/phase-marche.js';
-import { cheminComplet, FORMATS, TAILLE_MAX, verserFichier } from '../services/stockage.js';
+import { fichierStocke, FORMATS, servirFichier, TAILLE_MAX, verserFichier } from '../services/stockage.js';
 import { chargerReferentiels, classerDocument } from '../services/classement-auto.js';
 import { languesInstallees, resteALire, tesseractDisponible, traiterFile } from '../services/ocr.js';
 import { listerSauvegardes, sauvegarder } from '../services/sauvegarde.js';
@@ -398,38 +398,12 @@ export default async function routesDocuments(app) {
     app.get(`/api/documents/:id/${suffixe}`, async (requete, reponse) => {
       const d = await documentVisible(requete);
       if (!d.cheminOriginal) throw introuvable('Fichier');
-
-      const complet = cheminComplet(d.cheminOriginal);
-      try {
-        await fs.access(complet);
-      } catch {
-        throw new ErreurHttp(410, 'Le fichier n’est plus dans le stockage.');
-      }
-
-      const extension = path.extname(d.cheminOriginal).toLowerCase();
-      // Le type MIME vient de notre table, jamais de ce que dit le fichier.
-      const mime = FORMATS[extension] ?? 'application/octet-stream';
-      // Le nom proposé est nettoyé : un nom d'origine peut contenir des
-      // guillemets ou des sauts de ligne, qui casseraient l'en-tête.
-      const nom = (d.nomOrigine ?? `document-${d.id}${extension}`).replace(/[^\w.\- ]+/g, '_');
+      const complet = await fichierStocke(d);
 
       if (disposition === 'attachment') {
         await journaliser({ utilisateurId: requete.utilisateur.id, action: 'document.telecharge', objetType: 'Document', objetId: d.id, ip: requete.ip }, requete.log);
       }
-
-      // L'application affiche le PDF dans un cadre de sa propre page. Les
-      // en-têtes généraux interdisent tout cadre (frame-ancestors 'none') :
-      // on les desserre ici pour notre seule origine, et pour ce fichier.
-      // Un autre site ne peut toujours pas l'encadrer.
-      reponse.header('X-Frame-Options', 'SAMEORIGIN').header('Content-Security-Policy', "default-src 'none'; frame-ancestors 'self'");
-
-      return reponse
-        .header('Content-Type', mime)
-        .header('Content-Disposition', `${disposition}; filename="${nom}"`)
-        .header('Content-Length', String(d.taille ?? 0))
-        .header('X-Content-Type-Options', 'nosniff')
-        .header('Cache-Control', 'private, max-age=300')
-        .send(createReadStream(complet));
+      return servirFichier(reponse, d, complet, disposition);
     });
   }
 }

@@ -9,7 +9,8 @@
     "./droits": "./src/droits.js",
     "./schemas": "./src/schemas.js",
     "./marches": "./src/marches.js",
-    "./circuit": "./src/circuit.js"
+    "./circuit": "./src/circuit.js",
+    "./achats": "./src/achats.js"
   },
   "scripts": {
     "test": "vitest run"

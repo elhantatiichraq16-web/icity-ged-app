@@ -316,6 +316,20 @@ export default async function routesMarches(app) {
       if (champDate in data) data[champDate] = date(data[champDate]);
     }
 
+    // Une référence corrigée (un nom provisoire remplacé par la vraie) change
+    // la clé de regroupement : sans elle, les pièces qui citent la vraie
+    // référence ne reconnaîtraient pas l'affaire.
+    if ('reference' in champs || 'lot' in champs) {
+      const cle = cleDeReference(champs.reference ?? avant.reference, 'lot' in champs ? champs.lot : avant.lot);
+      if (cle !== avant.referenceNormalisee) {
+        const homonyme = await db.marche.findUnique({ where: { referenceNormalisee: cle } });
+        if (homonyme) {
+          throw new ErreurHttp(409, `L’affaire « ${homonyme.reference} » existe déjà.`, { erreurs: { reference: `Déjà utilisée par « ${homonyme.reference} ».` } });
+        }
+        data.referenceNormalisee = cle;
+      }
+    }
+
     const apres = await db.marche.update({
       where: { id },
       data,

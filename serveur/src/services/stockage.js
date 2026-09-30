@@ -21,6 +21,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { config } from '../config.js';
 import { db } from '../db.js';
+import { ErreurHttp } from '../erreurs.js';
 
 const executer = promisify(execFile);
 
@@ -159,6 +160,7 @@ export async function verserFichier(source, infos = {}) {
       marcheId: infos.marcheId ?? null,
       clientId: infos.clientId ?? null,
       typeDocumentId: infos.typeDocumentId ?? null,
+      commandeFournisseurId: infos.commandeFournisseurId ?? null,
       source: infos.source ?? 'versement',
       confidentialite: infos.confidentialite ?? 'interne',
       criticite: infos.criticite ?? 'courant',
@@ -179,6 +181,51 @@ export async function verserFichier(source, infos = {}) {
   });
 
   return { document, doublon: null, cree: true };
+}
+
+/**
+ * Le chemin complet du fichier d'un document, s'il est bien dans le stockage.
+ * Un fichier disparu (disque restauré à moitié) se dit franchement : 410.
+ */
+export async function fichierStocke(d) {
+  const complet = cheminComplet(d.cheminOriginal);
+  try {
+    await fs.access(complet);
+  } catch {
+    throw new ErreurHttp(410, 'Le fichier n’est plus dans le stockage.');
+  }
+  return complet;
+}
+
+/**
+ * Envoie le fichier d'un document au navigateur (§13).
+ *
+ * @param {import('fastify').FastifyReply} reponse
+ * @param {{ id: number, cheminOriginal: string, nomOrigine?: string|null, taille?: bigint|number|null }} d
+ * @param {string} complet    son chemin, vérifié par fichierStocke
+ * @param {'inline'|'attachment'} disposition
+ */
+export function servirFichier(reponse, d, complet, disposition) {
+  const extension = path.extname(d.cheminOriginal).toLowerCase();
+  // Le type MIME vient de notre table, jamais de ce que dit le fichier.
+  const mime = FORMATS[extension] ?? 'application/octet-stream';
+  // Le nom proposé est nettoyé : un nom d'origine peut contenir des
+  // guillemets ou des sauts de ligne, qui casseraient l'en-tête.
+  const nom = (d.nomOrigine ?? `document-${d.id}${extension}`).replace(/[^\w.\- ]+/g, '_');
+
+  // L'application affiche le PDF dans un cadre de sa propre page. Les
+  // en-têtes généraux interdisent tout cadre (frame-ancestors 'none') :
+  // on les desserre ici pour notre seule origine, et pour ce fichier.
+  // Un autre site ne peut toujours pas l'encadrer.
+  return reponse
+    .header('X-Frame-Options', 'SAMEORIGIN')
+    .header('Content-Security-Policy', "default-src 'none'; frame-ancestors 'self'")
+    .header('Content-Type', mime)
+    .header('Content-Disposition', `${disposition}; filename="${nom}"`)
+    .header('Content-Length', String(d.taille ?? 0))
+    .header('X-Content-Type-Options', 'nosniff')
+    .header('Cache-Control', 'private, max-age=300')
+    .send(createReadStream(complet));
 }
 
 /** Supprime le fichier d'un document (corbeille vidée, versement annulé). */

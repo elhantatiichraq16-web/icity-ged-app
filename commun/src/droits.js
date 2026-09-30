@@ -60,6 +60,11 @@ export function droitsPour(utilisateur) {
   can('lire', 'Document', { confidentialite: { $in: confidentialitesVisibles(role) } });
   can('lire', 'Document', { versePar: moi });
 
+  // Les achats : chacun voit le matériel d'un marché et où en est sa
+  // commande. Les prix, les marges et les paiements (« PrixAchat ») restent
+  // aux achats et à la direction.
+  can('lire', 'Achat');
+
   if (role === 'lecteur') return build();
 
   // ── Déposants ──
@@ -88,6 +93,12 @@ export function droitsPour(utilisateur) {
     can('gerer', ['AVerifier', 'Client']);
   }
 
+  // ── Achats : la personne responsable gère tout, et valide elle-même ──
+  if (role === 'achats') {
+    can('gerer', ['Achat', 'Fournisseur']);
+    can('lire', ['PrixAchat', 'Fournisseur']);
+  }
+
   // Les comptes mail portent un mot de passe d'application : seul
   // l'administrateur les configure (§10).
 
@@ -98,6 +109,8 @@ export function droitsPour(utilisateur) {
     can('supprimer', 'Marche');
     can('gerer', ['AVerifier', 'Client']);
     can('lire', 'Journal');
+    // Il suit les achats et leurs prix, sans les saisir.
+    can('lire', ['PrixAchat', 'Fournisseur']);
   }
 
   // Garde-fou : quel que soit le rôle (hors administrateur), on ne touche

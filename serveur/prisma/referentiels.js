@@ -34,6 +34,13 @@ export const TYPES_DOCUMENTS = [
   { code: 'CAU', nom: 'Caution bancaire' },
   { code: 'RMS', nom: 'Rapport de mise en service' },
   { code: 'MAIL', nom: 'Mail' },
+
+  // Les pièces des fournisseurs, versées depuis la partie Achats. Elles ont
+  // leurs propres types : le bon de livraison d'un fournisseur n'est pas celui
+  // du client, il ne doit pas faire avancer la phase du marché.
+  { code: 'BCF', nom: 'Bon de commande fournisseur' },
+  { code: 'BLF', nom: 'Bon de livraison fournisseur' },
+  { code: 'FACF', nom: 'Facture fournisseur' },
 ];
 
 /** Les étiquettes, par famille et par couleur (reprises du paramétrage actuel). */
