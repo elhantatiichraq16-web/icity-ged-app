@@ -721,7 +721,16 @@ function CarteCoordonnees({ c }) {
 const CONTACT_VIDE = { nom: '', fonction: '', telephone: '', mobile: '', email: '', notes: '' };
 
 /** Ajouter ou corriger une personne à joindre chez le client. */
-function ModaleContact({ ouverte, surChangement, clientId, contact }) {
+/**
+ * Les adresses d'API des contacts, selon la fiche : un client ou un
+ * fournisseur ont la même carte « Contacts », comme dans Odoo.
+ */
+const CIBLES_CONTACT = {
+  client: { ajouter: (id) => `/api/clients/${id}/contacts`, base: '/api/contacts-clients', fiche: ['client'], fil: ['fil', 'client'] },
+  fournisseur: { ajouter: (id) => `/api/fournisseurs/${id}/contacts`, base: '/api/contacts-fournisseurs', fiche: ['fournisseur'], fil: ['fil', 'fournisseur'] },
+};
+
+function ModaleContact({ ouverte, surChangement, ficheId, contact, cible }) {
   const depart = contact ? Object.fromEntries(Object.keys(CONTACT_VIDE).map((k) => [k, contact[k] ?? ''])) : CONTACT_VIDE;
   const f = useFormulaire(depart);
   const fileAttente = useQueryClient();
@@ -736,9 +745,10 @@ function ModaleContact({ ouverte, surChangement, clientId, contact }) {
   }
 
   const envoyer = f.soumettre(schemaContactClient, async (v) => {
-    await api(contact ? `/api/contacts-clients/${contact.id}` : `/api/clients/${clientId}/contacts`, { methode: contact ? 'PATCH' : 'POST', corps: v });
-    await fileAttente.invalidateQueries({ queryKey: ['client'] });
-    fileAttente.invalidateQueries({ queryKey: ['fil', 'client'] });
+    const adresses = CIBLES_CONTACT[cible];
+    await api(contact ? `${adresses.base}/${contact.id}` : adresses.ajouter(ficheId), { methode: contact ? 'PATCH' : 'POST', corps: v });
+    await fileAttente.invalidateQueries({ queryKey: adresses.fiche });
+    fileAttente.invalidateQueries({ queryKey: adresses.fil });
     notifier({ titre: contact ? 'Contact modifié' : 'Contact ajouté', message: v.nom, ton: 'ok' });
     fermer(false);
   });
@@ -748,7 +758,7 @@ function ModaleContact({ ouverte, surChangement, clientId, contact }) {
       ouverte={ouverte}
       surChangement={fermer}
       titre={contact ? `Modifier ${contact.nom}` : 'Nouveau contact'}
-      description="Une personne à joindre chez ce client : le chef de service, l’ordonnateur, le technicien du chantier."
+      description={cible === 'fournisseur' ? 'Une personne à joindre chez ce fournisseur : le commercial, l’administration des ventes, la comptabilité.' : 'Une personne à joindre chez ce client : le chef de service, l’ordonnateur, le technicien du chantier.'}
       pied={
         <>
           <Bouton variante="fantome" onClick={() => fermer(false)} disabled={f.envoi}>
@@ -777,8 +787,8 @@ function ModaleContact({ ouverte, surChangement, clientId, contact }) {
   );
 }
 
-/** Les personnes à joindre, comme l'onglet « Contacts » d'Odoo. */
-function CarteContacts({ c, peutGerer }) {
+/** Les personnes à joindre, comme l'onglet « Contacts » d'Odoo : chez un client ou un fournisseur. */
+export function CarteContacts({ c, peutGerer, cible = 'client' }) {
   const [edition, setEdition] = useState(null); // null | 'nouveau' | un contact
   const [aRetirer, setARetirer] = useState(null);
   const [retrait, setRetrait] = useState(false);
@@ -788,9 +798,9 @@ function CarteContacts({ c, peutGerer }) {
   async function retirer() {
     setRetrait(true);
     try {
-      await api(`/api/contacts-clients/${aRetirer.id}`, { methode: 'DELETE' });
-      await fileAttente.invalidateQueries({ queryKey: ['client'] });
-      fileAttente.invalidateQueries({ queryKey: ['fil', 'client'] });
+      await api(`${CIBLES_CONTACT[cible].base}/${aRetirer.id}`, { methode: 'DELETE' });
+      await fileAttente.invalidateQueries({ queryKey: CIBLES_CONTACT[cible].fiche });
+      fileAttente.invalidateQueries({ queryKey: CIBLES_CONTACT[cible].fil });
       notifier({ titre: 'Contact retiré', message: aRetirer.nom, ton: 'ok' });
       setARetirer(null);
     } catch (erreur) {
@@ -813,7 +823,7 @@ function CarteContacts({ c, peutGerer }) {
         )}
       </div>
       {c.contacts.length === 0 ? (
-        <p className="px-5 py-6 text-[14px] text-encre-3">Aucune personne enregistrée chez ce client.</p>
+        <p className="px-5 py-6 text-[14px] text-encre-3">Aucune personne enregistrée.</p>
       ) : (
         <ul className="divide-y divide-trait">
           {c.contacts.map((p) => (
@@ -850,7 +860,8 @@ function CarteContacts({ c, peutGerer }) {
             key={edition === 'nouveau' ? 'nouveau' : (edition?.id ?? 'aucun')}
             ouverte={edition !== null}
             surChangement={(o) => !o && setEdition(null)}
-            clientId={c.id}
+            ficheId={c.id}
+            cible={cible}
             contact={edition === 'nouveau' ? null : edition}
           />
           <Confirmation

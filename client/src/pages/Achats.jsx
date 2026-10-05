@@ -11,7 +11,7 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, FileSpreadsheet, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Download, FileSpreadsheet, Merge, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   ETATS_PAIEMENT,
   MODALITES_PAIEMENT,
@@ -29,7 +29,8 @@ import {
   statutAchat,
   total,
 } from '@icity/commun/achats';
-import { api } from '../api.js';
+import { erreursParChamp } from '@icity/commun/schemas';
+import { api, ErreurApi } from '../api.js';
 import { useSession } from '../auth/session.jsx';
 import { useFormulaire } from '../formulaire.js';
 import { Bouton } from '../ui/Bouton.jsx';
@@ -57,7 +58,8 @@ const ORDRE_TON = { alerte: 0, attente: 1, neutre: 2 };
 /** Les listes qu'un changement dans les achats peut avoir modifiées. */
 function useInvalider() {
   const file = useQueryClient();
-  return () => ['achats', 'achats-marches', 'commandes-fournisseur', 'fournisseurs'].forEach((cle) => file.invalidateQueries({ queryKey: [cle] }));
+  return () =>
+    [['achats'], ['achats-marches'], ['commandes-fournisseur'], ['fournisseurs'], ['fournisseur'], ['fil', 'fournisseur']].forEach((cle) => file.invalidateQueries({ queryKey: cle }));
 }
 
 /** Les catégories du classeur, proposées à la saisie. */
@@ -1133,6 +1135,7 @@ function FormulaireCommande({ commande, marcheIdParDefaut, fermer }) {
 
 function OngletFournisseurs({ gerer, surModifier }) {
   const fournisseurs = useQuery({ queryKey: ['fournisseurs'], queryFn: () => api('/api/fournisseurs') });
+  const [aFusionner, setAFusionner] = useState(null);
   if (fournisseurs.isPending) {
     return (
       <Carte className="p-6">
@@ -1174,16 +1177,32 @@ function OngletFournisseurs({ gerer, surModifier }) {
             <tbody>
               {fournisseurs.data.map((x) => (
                 <tr key={x.id} className="border-b border-trait last:border-b-0">
-                  <td className="px-3 py-2.5 font-medium">{x.nom}</td>
+                  <td className="px-3 py-2.5 font-medium">
+                    <Link to={`/achats/fournisseurs/${x.id}`} className="text-cyan-texte hover:underline">
+                      {x.nom}
+                    </Link>
+                    {(x.synonymes ?? []).length > 0 && <span className="block text-[12.5px] font-normal text-encre-3">aussi : {x.synonymes.join(', ')}</span>}
+                  </td>
                   <td className="px-3 py-2.5 text-encre-2">{[x.contact, x.telephone, x.email].filter(Boolean).join(' · ') || '—'}</td>
                   <td className="px-3 py-2.5 text-encre-2">{x.conditions ?? '—'}</td>
                   <td className="chiffres px-3 py-2.5 text-right">{x.nbLignes}</td>
                   <td className="chiffres px-3 py-2.5 text-right whitespace-nowrap">{dh(x.montantAchat)}</td>
                   {gerer && (
                     <td className="px-2 py-2">
-                      <button type="button" onClick={() => surModifier(x)} aria-label={`Modifier ${x.nom}`} className="grid size-8 place-items-center rounded-lg text-encre-3 hover:bg-surface-2 hover:text-encre">
-                        <Pencil className="size-4" aria-hidden />
-                      </button>
+                      <div className="flex justify-end gap-0.5">
+                        <button type="button" onClick={() => surModifier(x)} aria-label={`Modifier ${x.nom}`} className="grid size-8 place-items-center rounded-lg text-encre-3 hover:bg-surface-2 hover:text-encre">
+                          <Pencil className="size-4" aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAFusionner(x)}
+                          aria-label={`Fusionner ${x.nom} dans un autre fournisseur`}
+                          title="Fusionner ce doublon dans un autre fournisseur"
+                          className="grid size-8 place-items-center rounded-lg text-encre-3 hover:bg-surface-2 hover:text-encre"
+                        >
+                          <Merge className="size-4" aria-hidden />
+                        </button>
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -1192,15 +1211,95 @@ function OngletFournisseurs({ gerer, surModifier }) {
           </table>
         </Carte>
       )}
+      {gerer && <ModaleFusion doublon={aFusionner} fournisseurs={fournisseurs.data ?? []} fermer={() => setAFusionner(null)} />}
     </div>
   );
 }
 
-const FOURNISSEUR_VIDE = { nom: '', contact: '', telephone: '', email: '', conditions: '', notes: '' };
+/**
+ * Fusionner un doublon (« MEDITEN / CYBIONET ») dans le fournisseur à garder
+ * (« CYBIONET ») : ses achats, commandes et contacts passent sur lui, et son
+ * nom devient une « autre écriture » que le prochain import reconnaîtra.
+ */
+function ModaleFusion({ doublon, fournisseurs, fermer }) {
+  const [versId, setVersId] = useState('');
+  const [envoi, setEnvoi] = useState(false);
+  const invalider = useInvalider();
+  const { notifier } = useToasts();
+  const autres = fournisseurs.filter((f) => f.id !== doublon?.id);
 
-function ModaleFournisseur({ ouverte, surChangement, fournisseur }) {
+  async function fusionner() {
+    setEnvoi(true);
+    try {
+      const r = await api(`/api/fournisseurs/${doublon.id}/fusionner`, { methode: 'POST', corps: { versId: Number(versId) } });
+      invalider();
+      notifier({ titre: 'Fournisseurs fusionnés', message: `« ${doublon.nom} » est maintenant « ${r.garde.nom} » : ${r.lignes} ligne(s), ${r.commandes} commande(s) déplacée(s).`, ton: 'ok' });
+      setVersId('');
+      fermer();
+    } catch (erreur) {
+      notifier({ titre: 'Fusion impossible', message: erreur.message, ton: 'alerte' });
+    } finally {
+      setEnvoi(false);
+    }
+  }
+
   return (
-    <Modale ouverte={ouverte} surChangement={surChangement} titre={fournisseur ? 'Modifier le fournisseur' : 'Nouveau fournisseur'} largeur="max-w-xl">
+    <Modale
+      ouverte={doublon !== null}
+      surChangement={(o) => !o && fermer()}
+      titre={`Fusionner « ${doublon?.nom ?? ''} »`}
+      description="Ses lignes d’achat, ses commandes, ses contacts et ses activités passeront sur le fournisseur choisi. Son nom deviendra une autre écriture : le prochain import le reconnaîtra. Cette fiche disparaîtra."
+      pied={
+        <>
+          <Bouton variante="fantome" onClick={fermer} disabled={envoi}>
+            Annuler
+          </Bouton>
+          <Bouton icone={Merge} disabled={!versId} chargement={envoi} libelleChargement="Fusion…" onClick={fusionner}>
+            Fusionner
+          </Bouton>
+        </>
+      }
+    >
+      <Selection libelle="Fournisseur à garder" value={versId} onChange={(e) => setVersId(e.target.value)}>
+        <option value="">— choisir —</option>
+        {autres.map((f) => (
+          <option key={f.id} value={String(f.id)}>
+            {f.nom} ({f.nbLignes} ligne{f.nbLignes > 1 ? 's' : ''})
+          </option>
+        ))}
+      </Selection>
+    </Modale>
+  );
+}
+
+const FOURNISSEUR_VIDE = {
+  nom: '',
+  synonymes: '',
+  contact: '',
+  telephone: '',
+  email: '',
+  ice: '',
+  identifiantFiscal: '',
+  registreCommerce: '',
+  adresse: '',
+  codePostal: '',
+  ville: '',
+  pays: 'Maroc',
+  siteWeb: '',
+  conditions: '',
+  notes: '',
+};
+
+/** « A, B ; C » → ['A', 'B', 'C'] : les autres écritures saisies en texte. */
+const decouper = (t) =>
+  String(t ?? '')
+    .split(/[,;\n]/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+export function ModaleFournisseur({ ouverte, surChangement, fournisseur }) {
+  return (
+    <Modale ouverte={ouverte} surChangement={surChangement} titre={fournisseur ? 'Modifier le fournisseur' : 'Nouveau fournisseur'} largeur="max-w-2xl">
       {ouverte && <FormulaireFournisseur fournisseur={fournisseur} fermer={() => surChangement(false)} />}
     </Modale>
   );
@@ -1209,9 +1308,16 @@ function ModaleFournisseur({ ouverte, surChangement, fournisseur }) {
 function FormulaireFournisseur({ fournisseur, fermer }) {
   const invalider = useInvalider();
   const { notifier } = useToasts();
-  const initiales = fournisseur ? Object.fromEntries(Object.keys(FOURNISSEUR_VIDE).map((cle) => [cle, enTexte(fournisseur[cle])])) : FOURNISSEUR_VIDE;
+  const initiales = fournisseur
+    ? { ...Object.fromEntries(Object.keys(FOURNISSEUR_VIDE).map((cle) => [cle, enTexte(fournisseur[cle])])), synonymes: (fournisseur.synonymes ?? []).join(', ') }
+    : FOURNISSEUR_VIDE;
   const f = useFormulaire(initiales);
-  const enregistrer = f.soumettre(schemaFournisseur, async (donnees) => {
+  // Les autres écritures se saisissent en texte : on les découpe avant de
+  // valider avec le même schéma que le serveur.
+  const enregistrer = f.soumettre(null, async (v) => {
+    const lu = schemaFournisseur.safeParse({ ...v, synonymes: decouper(v.synonymes) });
+    if (!lu.success) throw new ErreurApi(422, { message: 'Certains champs sont à corriger.', erreurs: erreursParChamp(lu.error) });
+    const donnees = lu.data;
     if (fournisseur) await api(`/api/fournisseurs/${fournisseur.id}`, { methode: 'PATCH', corps: donnees });
     else await api('/api/fournisseurs', { methode: 'POST', corps: donnees });
     invalider();
@@ -1222,11 +1328,24 @@ function FormulaireFournisseur({ fournisseur, fermer }) {
     <form noValidate onSubmit={enregistrer} className="grid gap-4">
       {f.erreurGenerale && <Alerte ton="alerte">{f.erreurGenerale}</Alerte>}
       <Champ libelle="Nom" autoFocus {...f.champ('nom')} />
+      <Champ libelle="Autres écritures" facultatif aide="Les autres façons d’écrire son nom, séparées par des virgules : l’import les reconnaîtra au lieu de créer un doublon." {...f.champ('synonymes')} />
       <div className="grid gap-4 sm:grid-cols-3">
-        <Champ libelle="Contact" facultatif {...f.champ('contact')} />
+        <Champ libelle="Contact principal" facultatif {...f.champ('contact')} />
         <Champ libelle="Téléphone" facultatif {...f.champ('telephone')} />
         <Champ libelle="E-mail" facultatif type="email" {...f.champ('email')} />
       </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Champ libelle="ICE" facultatif inputMode="numeric" placeholder="15 chiffres" {...f.champ('ice')} />
+        <Champ libelle="Identifiant fiscal (IF)" facultatif {...f.champ('identifiantFiscal')} />
+        <Champ libelle="Registre de commerce (RC)" facultatif {...f.champ('registreCommerce')} />
+      </div>
+      <Champ libelle="Adresse" facultatif placeholder="N°, rue, quartier" {...f.champ('adresse')} />
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Champ libelle="Ville" facultatif {...f.champ('ville')} />
+        <Champ libelle="Code postal" facultatif {...f.champ('codePostal')} />
+        <Champ libelle="Pays" facultatif {...f.champ('pays')} />
+      </div>
+      <Champ libelle="Site web" facultatif placeholder="www.…" {...f.champ('siteWeb')} />
       <Champ libelle="Conditions habituelles" facultatif placeholder="13 % d’avance, reste à 60 jours" {...f.champ('conditions')} />
       <ZoneTexte libelle="Notes" id="fournisseur-notes" {...f.champ('notes')} />
       <div className="mt-2 flex justify-end gap-2">

@@ -556,7 +556,49 @@ export const schemaFournisseur = z.object({
   email: z.preprocess((v) => (v === '' ? null : v), z.email({ error: 'Adresse e-mail invalide.' }).nullish()),
   conditions: texte(255),
   notes: texte(2000),
+
+  // ── La fiche, sur le modèle d'Odoo ──
+  /** Les autres écritures du nom : l'import les reconnaît au lieu de créer un doublon. */
+  synonymes: z
+    .array(z.string().trim().min(1).max(160))
+    .max(30, { error: '30 écritures au plus.' })
+    .transform((liste) => [...new Set(liste)])
+    .nullish(),
+  ice: z
+    .string()
+    .trim()
+    .regex(/^(\d{15})?$/, { error: 'L’ICE compte 15 chiffres.' })
+    .transform((v) => v || null)
+    .nullish(),
+  identifiantFiscal: texte(20),
+  registreCommerce: texte(40),
+  adresse: texte(255),
+  codePostal: texte(10),
+  ville: texte(80),
+  pays: texte(60),
+  siteWeb: texte(191),
 });
+
+/** Un nom écrit pour comparer : sans majuscules, accents ni espaces doublés. */
+export const nomCompare = (t) =>
+  String(t ?? '')
+    .normalize('NFD')
+    .replace(/\p{Mn}/gu, '')
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/**
+ * Le fournisseur qui porte ce nom, ou l'une de ses autres écritures.
+ *
+ * @param {string} nom
+ * @param {{ id: number, nom: string, synonymes?: string[] | null }[]} fournisseurs
+ */
+export function fournisseurDuNom(nom, fournisseurs) {
+  const cle = nomCompare(nom);
+  if (!cle) return null;
+  return fournisseurs.find((f) => nomCompare(f.nom) === cle || (f.synonymes ?? []).some((s) => nomCompare(s) === cle)) ?? null;
+}
 
 const champsCommande = {
   marcheId: z.coerce.number({ error: 'Choisissez le marché.' }).int().positive({ error: 'Choisissez le marché.' }),

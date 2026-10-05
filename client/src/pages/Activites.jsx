@@ -190,11 +190,14 @@ function LigneActivite({ a, avecFiche }) {
         </p>
         <p className="text-[13px] text-encre-3">
           pour {a.assigne.id === utilisateur.id ? 'moi' : a.assigne.nom}
-          {avecFiche && (a.marche || a.client) && (
+          {avecFiche && (a.marche || a.client || a.fournisseur) && (
             <>
               {' · '}
-              <Link to={a.marche ? `/marches/${a.marche.id}` : `/clients/${a.client.id}`} className="text-cyan-texte hover:underline">
-                {a.marche ? a.marche.reference : a.client.nom}
+              <Link
+                to={a.marche ? `/marches/${a.marche.id}` : a.client ? `/clients/${a.client.id}` : `/achats/fournisseurs/${a.fournisseur.id}`}
+                className="text-cyan-texte hover:underline"
+              >
+                {a.marche ? a.marche.reference : a.client ? a.client.nom : a.fournisseur.nom}
               </Link>
             </>
           )}
@@ -260,12 +263,12 @@ function LigneActivite({ a, avecFiche }) {
 /**
  * Les activités prévues d'une fiche, en tête de son fil, comme dans Odoo.
  *
- * @param {{ type: 'marche' | 'client', id: number }} props
+ * @param {{ type: 'marche' | 'client' | 'fournisseur', id: number }} props
  */
 export function ActivitesFiche({ type, id }) {
   const { droits } = useSession();
   const [planifier, setPlanifier] = useState(false);
-  const champ = type === 'marche' ? 'marcheId' : 'clientId';
+  const champ = { marche: 'marcheId', client: 'clientId', fournisseur: 'fournisseurId' }[type];
   const activites = useQuery({ queryKey: ['activites', type, String(id)], queryFn: () => api(`/api/activites?${champ}=${id}`) });
   const liste = activites.data ?? [];
 

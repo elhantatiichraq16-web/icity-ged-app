@@ -15,7 +15,7 @@ import { ETATS } from '@icity/commun/circuit';
 import { confidentialitesVisibles } from '@icity/commun/droits';
 import { TYPES_ORGANISMES } from '@icity/commun/schemas';
 import { db } from '../db.js';
-import { introuvable, valider } from '../erreurs.js';
+import { interdit, introuvable, valider } from '../erreurs.js';
 import { exigerConnexion } from '../plugins/authentification.js';
 import { journaliser } from '../services/journal.js';
 
@@ -26,7 +26,7 @@ const ACTIONS_TAIRES = ['document.telecharge'];
 const LIMITE = 200;
 
 /** Les fiches qui ont un fil : leur nom dans l'URL, leur type au journal. */
-const TYPES = { marche: 'Marche', client: 'Client' };
+const TYPES = { marche: 'Marche', client: 'Client', fournisseur: 'Fournisseur' };
 
 /** Les noms lisibles des champs, pour dire ce qui a changé. */
 const CHAMPS = {
@@ -85,6 +85,12 @@ const PHRASES = {
   'client.contact_ajoute': 'a ajouté un contact',
   'client.contact_modifie': 'a modifié un contact',
   'client.contact_retire': 'a retiré un contact',
+  'fournisseur.cree': 'a créé le fournisseur',
+  'fournisseur.modifie': 'a modifié la fiche',
+  'fournisseur.fusionne': 'a fusionné un doublon dans cette fiche',
+  'fournisseur.contact_ajoute': 'a ajouté un contact',
+  'fournisseur.contact_modifie': 'a modifié un contact',
+  'fournisseur.contact_retire': 'a retiré un contact',
   'document.verse': 'a versé {piece}',
   'document.modifie': 'a rangé ou corrigé {piece}',
   'document.classe_auto': 'a rangé automatiquement {piece}',
@@ -161,7 +167,7 @@ function elementJournal(l, noms, pieces) {
     const vers = ETATS[l.apres?.etat]?.nom ?? l.apres?.etat;
     phrase = `a fait passer ${nomPiece} : ${de} → ${vers}`;
     changements = [];
-  } else if (l.action.startsWith('client.contact_')) {
+  } else if (l.action.startsWith('client.contact_') || l.action.startsWith('fournisseur.contact_')) {
     // Le contact concerné, plutôt qu'une liste de champs.
     phrase = `${PHRASES[l.action]} : ${(l.apres ?? l.avant)?.nom ?? ''}`;
     changements = [];
@@ -174,7 +180,7 @@ function elementJournal(l, noms, pieces) {
     texte: (phrase ?? l.action).replace('{piece}', nomPiece),
     pieceId: piece?.id ?? null,
     changements,
-    commentaire: l.action.startsWith('circuit.') || l.action.startsWith('activite.') || l.action === 'achats.import' ? l.commentaire : null,
+    commentaire: l.action.startsWith('circuit.') || l.action.startsWith('activite.') || ['achats.import', 'fournisseur.fusionne'].includes(l.action) ? l.commentaire : null,
   };
 }
 
@@ -201,8 +207,11 @@ export default async function routesFil(app) {
   async function fiche(requete) {
     const type = TYPES[requete.params.type];
     const id = Number(requete.params.id) || 0;
-    const existe = type === 'Marche' ? await db.marche.findUnique({ where: { id } }) : type === 'Client' ? await db.client.findUnique({ where: { id } }) : null;
-    if (!existe) throw introuvable(type === 'Client' ? 'Client' : 'Marché');
+    // Les fournisseurs (et leurs prix) restent aux achats et à la direction.
+    if (type === 'Fournisseur' && !requete.droits.can('lire', 'Fournisseur')) throw interdit();
+    const lire = { Marche: () => db.marche.findUnique({ where: { id } }), Client: () => db.client.findUnique({ where: { id } }), Fournisseur: () => db.fournisseur.findUnique({ where: { id } }) };
+    const existe = type ? await lire[type]() : null;
+    if (!existe) throw introuvable({ Client: 'Client', Fournisseur: 'Fournisseur' }[type] ?? 'Marché');
     return { type, id };
   }
 
@@ -234,7 +243,8 @@ export default async function routesFil(app) {
       take: LIMITE,
     });
 
-    const mails = requete.droits.can('lire', 'Mail')
+    // Un mail se rattache à un marché ou à un client, pas à un fournisseur.
+    const mails = type !== 'Fournisseur' && requete.droits.can('lire', 'Mail')
       ? await db.mail.findMany({
           where: type === 'Marche' ? { marcheId: id } : { clientId: id },
           include: { piecesJointes: true },

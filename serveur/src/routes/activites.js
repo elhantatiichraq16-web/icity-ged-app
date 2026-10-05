@@ -20,6 +20,7 @@ const AVEC = {
   creePar: { select: { id: true, nom: true } },
   marche: { select: { id: true, reference: true } },
   client: { select: { id: true, nom: true } },
+  fournisseur: { select: { id: true, nom: true } },
 };
 
 /** Une activité, telle que les écrans l'attendent. */
@@ -37,13 +38,15 @@ function vueActivite(a, aujourdhui = jourCasablanca()) {
     creePar: a.creePar,
     marche: a.marche,
     client: a.client,
+    fournisseur: a.fournisseur,
     faiteLe: a.faiteLe,
     compteRendu: a.compteRendu,
   };
 }
 
 /** La fiche qui porte l'activité, pour le journal (et donc pour son fil). */
-const ficheDe = (a) => (a.marcheId ? { objetType: 'Marche', objetId: a.marcheId } : { objetType: 'Client', objetId: a.clientId });
+const ficheDe = (a) =>
+  a.marcheId ? { objetType: 'Marche', objetId: a.marcheId } : a.clientId ? { objetType: 'Client', objetId: a.clientId } : { objetType: 'Fournisseur', objetId: a.fournisseurId };
 
 /** Le résumé lisible d'une activité, pour le journal. */
 const libelle = (a) => `${nomTypeActivite(a.type)} : ${a.resume}`;
@@ -82,13 +85,14 @@ export default async function routesActivites(app) {
    * les miennes (`miennes=1`), de la plus urgente à la plus lointaine.
    */
   app.get('/api/activites', async (requete) => {
-    const { marcheId, clientId, miennes } = requete.query;
-    if (!marcheId && !clientId && !miennes) throw new ErreurHttp(422, 'Indiquez une fiche, ou « miennes ».');
+    const { marcheId, clientId, fournisseurId, miennes } = requete.query;
+    if (!marcheId && !clientId && !fournisseurId && !miennes) throw new ErreurHttp(422, 'Indiquez une fiche, ou « miennes ».');
     const activites = await db.activite.findMany({
       where: {
         faiteLe: null,
         ...(marcheId ? { marcheId: Number(marcheId) || 0 } : {}),
         ...(clientId ? { clientId: Number(clientId) || 0 } : {}),
+        ...(fournisseurId ? { fournisseurId: Number(fournisseurId) || 0 } : {}),
         ...(miennes ? { assigneId: requete.utilisateur.id } : {}),
       },
       include: AVEC,
@@ -102,17 +106,18 @@ export default async function routesActivites(app) {
   app.post('/api/activites', planifier, async (requete, reponse) => {
     const corps = requete.body ?? {};
     const donnees = valider(schemaActivite, corps);
-    const { marcheId, clientId } = valider(
-      z.object({ marcheId: z.number().int().positive().nullish(), clientId: z.number().int().positive().nullish() }),
-      { marcheId: corps.marcheId, clientId: corps.clientId },
+    const { marcheId, clientId, fournisseurId } = valider(
+      z.object({ marcheId: z.number().int().positive().nullish(), clientId: z.number().int().positive().nullish(), fournisseurId: z.number().int().positive().nullish() }),
+      { marcheId: corps.marcheId, clientId: corps.clientId, fournisseurId: corps.fournisseurId },
     );
-    if (Boolean(marcheId) === Boolean(clientId)) throw new ErreurHttp(422, 'Une activité se pose sur un marché ou sur un client.');
+    if ([marcheId, clientId, fournisseurId].filter(Boolean).length !== 1) throw new ErreurHttp(422, 'Une activité se pose sur une seule fiche : un marché, un client ou un fournisseur.');
     if (marcheId && !(await db.marche.findUnique({ where: { id: marcheId } }))) throw introuvable('Marché');
     if (clientId && !(await db.client.findUnique({ where: { id: clientId } }))) throw introuvable('Client');
+    if (fournisseurId && !(await db.fournisseur.findUnique({ where: { id: fournisseurId } }))) throw introuvable('Fournisseur');
     const assigne = await assigneValide(donnees.assigneId);
 
     const cree = await db.activite.create({
-      data: { ...donnees, echeance: date(donnees.echeance), marcheId: marcheId ?? null, clientId: clientId ?? null, creeParId: requete.utilisateur.id },
+      data: { ...donnees, echeance: date(donnees.echeance), marcheId: marcheId ?? null, clientId: clientId ?? null, fournisseurId: fournisseurId ?? null, creeParId: requete.utilisateur.id },
       include: AVEC,
     });
     await journaliser(

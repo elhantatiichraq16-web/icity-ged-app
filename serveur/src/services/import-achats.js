@@ -9,7 +9,7 @@
  * Rien de ce qui se calcule n'est repris : un total tapé qui ne tombe pas
  * juste est signalé, pas recopié.
  */
-import { marge, pourcent, total } from '@icity/commun/achats';
+import { fournisseurDuNom, marge, pourcent, total } from '@icity/commun/achats';
 import { db } from '../db.js';
 import { decouperReference, ErreurClasseur, lireClasseur } from './lecture-xlsx.js';
 
@@ -247,17 +247,18 @@ export async function importerClasseurAchats(tampon, { marcheId, utilisateurId }
 
   await db.$transaction(
     async (tx) => {
-      // Les fournisseurs : retrouvés sans tenir compte des majuscules, créés sinon.
-      const connus = new Map((await tx.fournisseur.findMany()).map((f) => [plat(f.nom), f.id]));
+      // Les fournisseurs : retrouvés par leur nom ou l'une de leurs autres
+      // écritures (« MEDITEN / CYBIONET » est CYBIONET), sans tenir compte des
+      // majuscules ni des accents ; créés sinon.
+      const connus = await tx.fournisseur.findMany({ select: { id: true, nom: true, synonymes: true } });
       async function fournisseurId(nom) {
         if (!nom) return null;
-        const cle = plat(nom);
-        if (!connus.has(cle)) {
-          const cree = await tx.fournisseur.create({ data: { nom: nom.slice(0, 160) } });
-          connus.set(cle, cree.id);
-          rapport.fournisseursCrees.push(cree.nom);
-        }
-        return connus.get(cle);
+        const trouve = fournisseurDuNom(nom, connus);
+        if (trouve) return trouve.id;
+        const cree = await tx.fournisseur.create({ data: { nom: nom.slice(0, 160) } });
+        connus.push({ id: cree.id, nom: cree.nom, synonymes: [] });
+        rapport.fournisseursCrees.push(cree.nom);
+        return cree.id;
       }
 
       const existantes = new Map((await tx.ligneAchat.findMany({ where: { marcheId, numero: { not: null } } })).map((l) => [l.numero, l]));

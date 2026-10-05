@@ -291,13 +291,47 @@ model Fournisseur {
   conditions String? @db.VarChar(255)
   notes      String? @db.Text
 
+  // ── La fiche, sur le modèle d'Odoo ──
+  /// Les autres écritures du nom (« MEDITEN / CYBIONET ») : l'import les
+  /// reconnaît au lieu de créer un doublon.
+  synonymes         Json?
+  ice               String?  @db.VarChar(15)
+  identifiantFiscal String?  @map("identifiant_fiscal") @db.VarChar(20)
+  registreCommerce  String?  @map("registre_commerce") @db.VarChar(40)
+  adresse           String?  @db.VarChar(255)
+  codePostal        String?  @map("code_postal") @db.VarChar(10)
+  ville             String?  @db.VarChar(80)
+  pays              String?  @db.VarChar(60)
+  siteWeb           String?  @map("site_web") @db.VarChar(191)
+
   creeLe    DateTime @default(now()) @map("cree_le")
   modifieLe DateTime @updatedAt @map("modifie_le")
 
   lignes    LigneAchat[]
   commandes CommandeFournisseur[]
+  contacts  ContactFournisseur[]
+  activites Activite[]
 
   @@map("fournisseurs")
+}
+
+/// Une personne à joindre chez un fournisseur : le commercial, l'ADV, la
+/// comptabilité.
+model ContactFournisseur {
+  id            Int         @id @default(autoincrement())
+  fournisseurId Int         @map("fournisseur_id")
+  fournisseur   Fournisseur @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
+  nom           String      @db.VarChar(120)
+  fonction      String?     @db.VarChar(120)
+  telephone     String?     @db.VarChar(30)
+  mobile        String?     @db.VarChar(30)
+  email         String?     @db.VarChar(191)
+  notes         String?     @db.Text
+  creeLe        DateTime    @default(now()) @map("cree_le")
+  modifieLe     DateTime    @updatedAt @map("modifie_le")
+
+  @@index([fournisseurId])
+  @@map("contacts_fournisseurs")
 }
 
 /// Une ligne d'achat d'un marché — une ligne de la feuille « ÉTAT DES
@@ -679,11 +713,13 @@ model Activite {
   assigne      Utilisateur  @relation("ActivitesAssignees", fields: [assigneId], references: [id], onDelete: Cascade)
   creeParId    Int?         @map("cree_par")
   creePar      Utilisateur? @relation("ActivitesCreees", fields: [creeParId], references: [id], onDelete: SetNull)
-  /// La fiche qui porte l'activité : un marché, ou un client.
+  /// La fiche qui porte l'activité : un marché, un client ou un fournisseur.
   marcheId     Int?         @map("marche_id")
   marche       Marche?      @relation(fields: [marcheId], references: [id], onDelete: Cascade)
   clientId     Int?         @map("client_id")
   client       Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  fournisseurId Int?        @map("fournisseur_id")
+  fournisseur  Fournisseur? @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
   faiteLe      DateTime?    @map("faite_le")
   compteRendu  String?      @map("compte_rendu") @db.Text
   creeLe       DateTime     @default(now()) @map("cree_le")
@@ -692,5 +728,6 @@ model Activite {
   @@index([assigneId, faiteLe])
   @@index([marcheId])
   @@index([clientId])
+  @@index([fournisseurId])
   @@map("activites")
 }

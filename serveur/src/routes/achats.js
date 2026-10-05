@@ -11,6 +11,7 @@
 import {
   alertesLigne,
   CODES_STATUT_ACHAT,
+  fournisseurDuNom,
   marge,
   modalitePaiement,
   paiementCommande,
@@ -23,6 +24,8 @@ import {
   statutAchat,
   total,
 } from '@icity/commun/achats';
+import { z } from 'zod';
+import { schemaContactClient } from '@icity/commun/schemas';
 import { db } from '../db.js';
 import { ErreurHttp, introuvable, valider } from '../erreurs.js';
 import { exiger } from '../plugins/authentification.js';
@@ -123,7 +126,7 @@ function champsLigne(d) {
 /** Un fournisseur retrouvé par son nom, sans tenir compte des majuscules, ou créé. */
 async function fournisseurParNom(nom, requete) {
   if (!nom) return null;
-  const existant = await db.fournisseur.findFirst({ where: { nom: { equals: nom, mode: 'insensitive' } } });
+  const existant = fournisseurDuNom(nom, await db.fournisseur.findMany({ select: { id: true, nom: true, synonymes: true } }));
   if (existant) return existant.id;
   const cree = await db.fournisseur.create({ data: { nom } });
   await journaliser({ utilisateurId: requete.utilisateur.id, action: 'fournisseur.cree', objetType: 'Fournisseur', objetId: cree.id, apres: { nom }, ip: requete.ip }, requete.log);
@@ -359,6 +362,111 @@ export default async function routesAchats(app) {
     const apres = await db.fournisseur.update({ where: { id }, data: d });
     await journaliser({ utilisateurId: requete.utilisateur.id, action: 'fournisseur.modifie', objetType: 'Fournisseur', objetId: id, avant: { nom: avant.nom }, apres: d, ip: requete.ip }, requete.log);
     return apres;
+  });
+
+  // ── La fiche d'un fournisseur, sur le modèle d'Odoo ───────────
+  /** Une personne à joindre chez un fournisseur. */
+  const vueContact = (p) => ({ id: p.id, nom: p.nom, fonction: p.fonction, telephone: p.telephone, mobile: p.mobile, email: p.email, notes: p.notes });
+
+  app.get('/api/fournisseurs/:id', { preHandler: exiger('lire', 'Fournisseur') }, async (requete) => {
+    const id = Number(requete.params.id) || 0;
+    const f = await db.fournisseur.findUnique({ where: { id }, include: { contacts: { orderBy: { nom: 'asc' } } } });
+    if (!f) throw introuvable('Fournisseur');
+    const prix = requete.droits.can('lire', 'PrixAchat');
+    const [lignes, commandes] = await Promise.all([
+      db.ligneAchat.findMany({ where: { fournisseurId: id }, select: { quantite: true, puAchat: true, marcheId: true, marche: { select: { id: true, reference: true } } } }),
+      prix
+        ? db.commandeFournisseur.findMany({ where: { fournisseurId: id }, include: INCLURE_COMMANDE, orderBy: { id: 'desc' } })
+        : [],
+    ]);
+    // Les marchés où il fournit, avec le nombre de lignes : les boutons de raccourci.
+    const marches = new Map();
+    for (const l of lignes) {
+      const m = marches.get(l.marcheId) ?? { ...l.marche, nbLignes: 0 };
+      m.nbLignes += 1;
+      marches.set(l.marcheId, m);
+    }
+    return {
+      ...f,
+      synonymes: f.synonymes ?? [],
+      contacts: f.contacts.map(vueContact),
+      nbLignes: lignes.length,
+      montantAchat: prix ? lignes.reduce((t, l) => t + (total(nombre(l.puAchat), nombre(l.quantite)) ?? 0), 0) : null,
+      marches: [...marches.values()],
+      commandes: commandes.map(vueCommande),
+    };
+  });
+
+  app.post('/api/fournisseurs/:id/contacts', { preHandler: exiger('gerer', 'Fournisseur') }, async (requete, reponse) => {
+    const fournisseurId = Number(requete.params.id) || 0;
+    if (!(await db.fournisseur.findUnique({ where: { id: fournisseurId } }))) throw introuvable('Fournisseur');
+    const donnees = valider(schemaContactClient, requete.body);
+    const cree = await db.contactFournisseur.create({ data: { ...donnees, fournisseurId } });
+    await journaliser({ utilisateurId: requete.utilisateur.id, action: 'fournisseur.contact_ajoute', objetType: 'Fournisseur', objetId: fournisseurId, apres: { nom: cree.nom, fonction: cree.fonction }, ip: requete.ip }, requete.log);
+    return reponse.code(201).send(vueContact(cree));
+  });
+
+  app.patch('/api/contacts-fournisseurs/:id', { preHandler: exiger('gerer', 'Fournisseur') }, async (requete) => {
+    const id = Number(requete.params.id) || 0;
+    const avant = await db.contactFournisseur.findUnique({ where: { id } });
+    if (!avant) throw introuvable('Contact');
+    const apres = await db.contactFournisseur.update({ where: { id }, data: valider(schemaContactClient, requete.body) });
+    await journaliser({ utilisateurId: requete.utilisateur.id, action: 'fournisseur.contact_modifie', objetType: 'Fournisseur', objetId: avant.fournisseurId, avant: vueContact(avant), apres: vueContact(apres), ip: requete.ip }, requete.log);
+    return vueContact(apres);
+  });
+
+  app.delete('/api/contacts-fournisseurs/:id', { preHandler: exiger('gerer', 'Fournisseur') }, async (requete) => {
+    const id = Number(requete.params.id) || 0;
+    const contact = await db.contactFournisseur.findUnique({ where: { id } });
+    if (!contact) throw introuvable('Contact');
+    await db.contactFournisseur.delete({ where: { id } });
+    await journaliser({ utilisateurId: requete.utilisateur.id, action: 'fournisseur.contact_retire', objetType: 'Fournisseur', objetId: contact.fournisseurId, avant: vueContact(contact), ip: requete.ip }, requete.log);
+    return { ok: true };
+  });
+
+  /**
+   * Fusionner deux fournisseurs : « MEDITEN / CYBIONET » dans « CYBIONET ».
+   *
+   * Tout ce que porte le doublon passe sur celui qu'on garde — lignes,
+   * commandes, contacts, activités, et les champs que la fiche gardée n'a
+   * pas. Son nom devient une « autre écriture » : le prochain import le
+   * reconnaîtra au lieu de le recréer. Puis le doublon disparaît.
+   */
+  app.post('/api/fournisseurs/:id/fusionner', { preHandler: exiger('gerer', 'Fournisseur') }, async (requete) => {
+    const id = Number(requete.params.id) || 0;
+    const { versId } = valider(z.object({ versId: z.number({ error: 'Choisissez le fournisseur à garder.' }).int().positive() }), requete.body);
+    if (versId === id) throw new ErreurHttp(422, 'Choisissez un autre fournisseur que lui-même.');
+    const [doublon, garde] = await Promise.all([db.fournisseur.findUnique({ where: { id } }), db.fournisseur.findUnique({ where: { id: versId } })]);
+    if (!doublon || !garde) throw introuvable('Fournisseur');
+
+    const CHAMPS = ['contact', 'telephone', 'email', 'conditions', 'ice', 'identifiantFiscal', 'registreCommerce', 'adresse', 'codePostal', 'ville', 'pays', 'siteWeb'];
+    const complements = Object.fromEntries(CHAMPS.filter((c) => !garde[c] && doublon[c]).map((c) => [c, doublon[c]]));
+    const notes = [garde.notes, doublon.notes].filter(Boolean).join('\n\n') || null;
+    const synonymes = [...new Set([...(garde.synonymes ?? []), doublon.nom, ...(doublon.synonymes ?? [])])].filter((s) => s.toUpperCase() !== garde.nom.toUpperCase());
+
+    const deplaces = await db.$transaction(async (tx) => {
+      const lignes = await tx.ligneAchat.updateMany({ where: { fournisseurId: id }, data: { fournisseurId: versId } });
+      const commandes = await tx.commandeFournisseur.updateMany({ where: { fournisseurId: id }, data: { fournisseurId: versId } });
+      await tx.contactFournisseur.updateMany({ where: { fournisseurId: id }, data: { fournisseurId: versId } });
+      await tx.activite.updateMany({ where: { fournisseurId: id }, data: { fournisseurId: versId } });
+      await tx.fournisseur.update({ where: { id: versId }, data: { ...complements, notes, synonymes } });
+      await tx.fournisseur.delete({ where: { id } });
+      return { lignes: lignes.count, commandes: commandes.count };
+    });
+
+    await journaliser(
+      {
+        utilisateurId: requete.utilisateur.id,
+        action: 'fournisseur.fusionne',
+        objetType: 'Fournisseur',
+        objetId: versId,
+        avant: { nom: doublon.nom },
+        commentaire: `« ${doublon.nom} » fusionné dans « ${garde.nom} » (${deplaces.lignes} ligne(s), ${deplaces.commandes} commande(s))`,
+        ip: requete.ip,
+      },
+      requete.log,
+    );
+    return { garde: { id: garde.id, nom: garde.nom }, ...deplaces };
   });
 
   // ── Les commandes et leur paiement ────────────────────────────
