@@ -3,7 +3,7 @@
  * `phase` : la phase de livraison où l'écran sera construit.
  * `droit` : l'entrée n'apparaît que si l'utilisateur a ce droit.
  */
-import { Building2, ClipboardCheck, FileText, FolderInput, FolderKanban, Inbox, LayoutDashboard, Mail, Settings, ShoppingCart, Trash2, Upload } from 'lucide-react';
+import { Archive, Building2, ClipboardCheck, FileText, FolderInput, FolderKanban, Inbox, LayoutDashboard, Mail, Settings, ShoppingCart, Trash2, Upload } from 'lucide-react';
 
 export const NAVIGATION = [
   { chemin: '/', libelle: 'Tableau de bord', icone: LayoutDashboard, phase: 6 },
@@ -17,6 +17,8 @@ export const NAVIGATION = [
   { chemin: '/courriel', libelle: 'Courriel', icone: Mail, phase: 1, droit: ['lire', 'Mail'] },
   { chemin: '/a-verifier', libelle: 'À vérifier', icone: ClipboardCheck, phase: 9, droit: ['gerer', 'AVerifier'] },
   { chemin: '/corbeille', libelle: 'Corbeille', icone: Trash2, phase: 7, droit: ['gerer', 'AVerifier'] },
+  // Les marchés rangés : tout le monde les consulte, la direction les range.
+  { chemin: '/archives', libelle: 'Archives', icone: Archive, phase: 7 },
   { chemin: '/clients', libelle: 'Clients', icone: Building2, phase: 2 },
   { chemin: '/parametres', libelle: 'Paramètres', icone: Settings, phase: 1, droit: ['gerer', 'Utilisateur'] },
 ];

@@ -107,6 +107,9 @@ export function droitsPour(utilisateur) {
     can('modifier', 'Document');
     can(['controler', 'valider', 'archiver', 'supprimer'], 'Document');
     can('supprimer', 'Marche');
+    // Archiver un marché le sort de la vue de tous : c'est une décision de
+    // direction, comme le désarchiver.
+    can('archiver', 'Marche');
     can('gerer', ['AVerifier', 'Client']);
     can('lire', 'Journal');
     // Il suit les achats et leurs prix, sans les saisir.

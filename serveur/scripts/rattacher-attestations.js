@@ -26,6 +26,10 @@ console.log(`\n  Marchés ${appliquer ? 'déclarés' : 'à déclarer'} (gagnés 
 for (const l of bilan.declares) console.log(ligne(l));
 console.log(`\n  Marchés déjà connus, qu'elles ${appliquer ? 'ont rejoints' : 'rejoindraient'} : ${bilan.rejoints.length}`);
 for (const l of bilan.rejoints) console.log(ligne(l));
+if (bilan.archives.length) {
+  console.log(`\n  Marchés archivés, laissés de côté (à désarchiver pour y ranger) : ${bilan.archives.length}`);
+  for (const l of bilan.archives) console.log(ligne(l));
+}
 console.log(`\n  Attestations ${appliquer ? 'rattachées' : 'à rattacher'} : ${bilan.rattachees}`);
 console.log(`  Attestations mises à part (numéro de marché illisible) : ${bilan.illisibles}`);
 if (!appliquer) console.log('\n  Rien n’a été écrit. Relancez avec --oui pour appliquer.\n');

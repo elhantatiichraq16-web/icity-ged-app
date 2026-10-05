@@ -18,6 +18,7 @@ import { config } from '../config.js';
 import { db } from '../db.js';
 import { ErreurHttp, interdit, introuvable, valider } from '../erreurs.js';
 import { exiger, exigerConnexion } from '../plugins/authentification.js';
+import { archiverPieces, PIECES_ARCHIVEES, PIECES_HORS_ARCHIVES, pieceArchivee } from '../services/archivage.js';
 import { detecterDoublons, doublonsEnAttente, ecarterDoublon, garderLesDeux } from '../services/arbitrage-doublons.js';
 import { journaliser } from '../services/journal.js';
 import { recalculerPhase } from '../services/phase-marche.js';
@@ -56,7 +57,7 @@ function vueDocument(d) {
     titre: d.titre,
     nomOrigine: d.nomOrigine,
     type: d.typeDocument ? { id: d.typeDocument.id, code: d.typeDocument.code, nom: d.typeDocument.nom } : null,
-    marche: d.marche ? { id: d.marche.id, reference: d.marche.reference } : null,
+    marche: d.marche ? { id: d.marche.id, reference: d.marche.reference, archive: Boolean(d.marche.archiveLe) } : null,
     client: d.client ? { id: d.client.id, nom: d.client.nom } : null,
     dateDocument: d.dateDocument?.toISOString().slice(0, 10) ?? null,
     pages: d.pages,
@@ -73,8 +74,14 @@ function vueDocument(d) {
     aUnFichier: Boolean(d.cheminOriginal),
     extension: d.nomOrigine ? path.extname(d.nomOrigine).toLowerCase() : null,
     creeLe: d.creeLe,
+    // Archivée elle-même (`le`), ou par son marché : hors de la vue courante,
+    // toujours modifiable. `null` si la pièce est en cours.
+    archive: pieceArchivee(d) ? { le: (d.archiveLe ?? d.marche.archiveLe).toISOString(), parSonMarche: !d.archiveLe } : null,
   };
 }
+
+/** Archiver ou désarchiver : un lot de pièces cochées. */
+const schemaLotPieces = z.object({ ids: z.array(z.number().int().positive()).min(1).max(1000) });
 
 /** Retrouve un document visible par cet utilisateur, ou lève 404. */
 async function documentVisible(requete, extra = {}) {
@@ -93,7 +100,7 @@ export default async function routesDocuments(app) {
 
   // ── Liste ─────────────────────────────────────────────────────
   app.get('/api/documents', async (requete) => {
-    const { marcheId, clientId, typeId, statutOcr, source, sansMarche, q, ids, page = '1' } = requete.query;
+    const { marcheId, clientId, typeId, statutOcr, source, sansMarche, q, ids, archives, page = '1' } = requete.query;
     const numero = Math.max(1, Number(page) || 1);
     // Les pièces d'un versement, que l'écran suit jusqu'à la fin de leur lecture.
     const listeIds = ids === undefined ? null : String(ids).split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, PAGE);
@@ -102,6 +109,13 @@ export default async function routesDocuments(app) {
       supprimeLe: null,
       ...filtreVisibilite(requete.utilisateur),
       ...(listeIds ? { id: { in: listeIds } } : {}),
+      // Les pièces archivées (elles-mêmes ou par leur marché) restent hors de
+      // la liste, sauf à les demander — ou à ouvrir un marché précis.
+      ...(archives === 'seuls'
+        ? { AND: [PIECES_ARCHIVEES] }
+        : archives === 'tous' || marcheId || listeIds
+          ? {}
+          : PIECES_HORS_ARCHIVES),
       ...(marcheId ? { marcheId: Number(marcheId) } : {}),
       ...(sansMarche === 'true' ? { marcheId: null } : {}),
       ...(clientId ? { clientId: Number(clientId) } : {}),
@@ -133,6 +147,27 @@ export default async function routesDocuments(app) {
 
     return { total, page: numero, pages: Math.max(1, Math.ceil(total / PAGE)), documents: documents.map(vueDocument) };
   });
+
+  /**
+   * Archiver des pièces, ou les désarchiver : réservé à la direction, comme
+   * pour les marchés. Une pièce archivée par son marché ne se désarchive pas
+   * seule : c'est le marché qu'il faut désarchiver.
+   */
+  for (const [chemin, archiver] of [
+    ['/api/documents/archiver', true],
+    ['/api/documents/desarchiver', false],
+  ]) {
+    app.post(chemin, { preHandler: exiger('archiver', 'Marche') }, async (requete) => {
+      const { ids } = valider(schemaLotPieces, requete.body);
+      // On n'archive pas ce qu'on ne voit pas : la confidentialité tient ici aussi.
+      const visibles = await db.document.findMany({ where: { id: { in: ids }, ...filtreVisibilite(requete.utilisateur) }, select: { id: true } });
+      const modifies = await archiverPieces(
+        visibles.map((d) => d.id),
+        { archiver, utilisateurId: requete.utilisateur.id, ip: requete.ip, journaliser, log: requete.log },
+      );
+      return { modifies };
+    });
+  }
 
   // ── Fiche ─────────────────────────────────────────────────────
   app.get('/api/documents/:id', async (requete) => {
@@ -211,6 +246,7 @@ export default async function routesDocuments(app) {
       await garderLesDeux(paire, options);
       return { ok: true };
     }
+
     if (![paire.documentAId, paire.documentBId].includes(garderId)) {
       throw new ErreurHttp(422, 'Indiquez la pièce à garder.', { erreurs: { garderId: 'La pièce à garder doit être l’une des deux.' } });
     }
@@ -275,7 +311,7 @@ export default async function routesDocuments(app) {
         // Empreinte déjà connue : on refuse, et on montre l'original (§6).
         return reponse.code(409).send({
           message: 'Ce fichier est déjà au fonds, au bit près.',
-          doublon: { id: doublon.id, titre: doublon.titre, marche: doublon.marche ? { id: doublon.marche.id, reference: doublon.marche.reference } : null },
+          doublon: { id: doublon.id, titre: doublon.titre, marche: doublon.marche ? { id: doublon.marche.id, reference: doublon.marche.reference, archive: Boolean(doublon.marche.archiveLe) } : null },
         });
       }
 

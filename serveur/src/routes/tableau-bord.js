@@ -9,6 +9,7 @@
 import { confidentialitesVisibles } from '@icity/commun/droits';
 import { echeanceDe, estAppelOffres, etatEcheance, ORDRE_PHASES, phaseDe, piecesManquantes, PIECES_CYCLE } from '@icity/commun/marches';
 import { db } from '../db.js';
+import { EN_COURS, PIECES_HORS_ARCHIVES } from '../services/archivage.js';
 import { exigerConnexion } from '../plugins/authentification.js';
 import { codesParMarche, piecesParMarche } from '../services/phase-marche.js';
 
@@ -20,10 +21,12 @@ export default async function routesTableauBord(app) {
 
   app.get('/api/tableau-bord', async (requete) => {
     const visibles = confidentialitesVisibles(requete.utilisateur.role.code);
-    const filtreDocuments = { supprimeLe: null, confidentialite: { in: visibles } };
+    // Le tableau de bord parle de l'activité en cours : les marchés archivés
+    // et leurs pièces n'y comptent plus (ils restent dans « Archives »).
+    const filtreDocuments = { supprimeLe: null, confidentialite: { in: visibles }, ...PIECES_HORS_ARCHIVES };
 
     const [marches, pieces, codes, totalDocuments, rattaches, pagesTotal, parType, parMois, activite, aClasser, enCorbeille] = await Promise.all([
-      db.marche.findMany({ include: { client: { select: { id: true, nom: true } } } }),
+      db.marche.findMany({ where: EN_COURS, include: { client: { select: { id: true, nom: true } } } }),
       piecesParMarche(),
       codesParMarche(),
       db.document.count({ where: filtreDocuments }),

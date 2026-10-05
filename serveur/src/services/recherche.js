@@ -178,7 +178,7 @@ export async function chercher({ q, confidentialites, utilisateurId, marcheId, c
   const [lignes, total, facetteTypes, facetteClients, facetteAnnees] = await Promise.all([
     db.$queryRawUnsafe(
       `SELECT d.id, d.titre, d.texte_ocr AS texte, d.pages, d.statut_ocr AS "statutOcr", d.date_document AS "dateDocument",
-              t.nom AS "typeNom", t.code AS "typeCode", m.id AS "marcheId", m.reference AS "marcheReference",
+              t.nom AS "typeNom", t.code AS "typeCode", m.id AS "marcheId", m.reference AS "marcheReference", m.archive_le AS "marcheArchiveLe", d.archive_le AS "archiveLe",
               c.id AS "clientId", c.nom AS "clientNom",
               ts_rank(${indexe}, ${requete}) AS score
          FROM documents d
@@ -223,8 +223,10 @@ export async function chercher({ q, confidentialites, utilisateurId, marcheId, c
       statutOcr: l.statutOcr,
       dateDocument: l.dateDocument ? new Date(l.dateDocument).toISOString().slice(0, 10) : null,
       type: l.typeNom ? { nom: l.typeNom, code: l.typeCode } : null,
-      marche: l.marcheId ? { id: l.marcheId, reference: l.marcheReference } : null,
+      marche: l.marcheId ? { id: l.marcheId, reference: l.marcheReference, archive: Boolean(l.marcheArchiveLe) } : null,
       client: l.clientId ? { id: l.clientId, nom: l.clientNom } : null,
+      // Archivée elle-même ou par son marché : la recherche voit tout le fonds.
+      archive: Boolean(l.archiveLe || l.marcheArchiveLe),
       score: Number(l.score),
       extraits: extraits(l.texte, mots),
     })),

@@ -9,6 +9,7 @@ import { FournisseurSession, useSession } from './auth/session.jsx';
 import { Coquille } from './coquille/Coquille.jsx';
 import { PageChoisirMotDePasse, PageConnexion, PageDeuxFacteurs, PageMotDePasseOublie } from './pages/auth/PagesAuth.jsx';
 import { PageClients, PageFicheClient } from './pages/Clients.jsx';
+import { PageArchives } from './pages/Archives.jsx';
 import { PageCorbeille } from './pages/Corbeille.jsx';
 import { PageArrivees, PageCourriel } from './pages/Courriel.jsx';
 import { PageFicheMarche } from './pages/FicheMarche.jsx';
@@ -124,6 +125,7 @@ const routeur = createBrowserRouter([
               { path: '/recherche', element: <PageRecherche /> },
               { path: '/verser', element: <PageVerser /> },
               { path: '/corbeille', element: <PageCorbeille /> },
+              { path: '/archives', element: <PageArchives /> },
               { path: '/courriel', element: <PageCourriel /> },
               { path: '/arrivees', element: <PageArrivees /> },
               { path: '/documents/:id', element: <PageFicheDocument /> },

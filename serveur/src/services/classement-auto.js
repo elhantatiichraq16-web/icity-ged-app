@@ -16,6 +16,7 @@
  *    une pièce non classée se voit, une pièce mal classée se perd.
  */
 import { db } from '../db.js';
+import { EN_COURS } from './archivage.js';
 import { rattacherAttestations } from './attestations.js';
 import { analyser } from './classement.js';
 import { journaliser } from './journal.js';
@@ -28,7 +29,9 @@ const CITATIONS_MINIMALES = 1;
 export async function chargerReferentiels() {
   const [clients, marches, types] = await Promise.all([
     db.client.findMany({ orderBy: [{ interne: 'asc' }, { nom: 'asc' }] }),
-    db.marche.findMany({ select: { id: true, reference: true, referenceNormalisee: true, clientId: true } }),
+    // Les marchés archivés n'attirent plus rien : une pièce qui cite une
+    // vieille affaire reste « à classer », où le tri le signale.
+    db.marche.findMany({ where: EN_COURS, select: { id: true, reference: true, referenceNormalisee: true, clientId: true } }),
     db.typeDocument.findMany({ select: { id: true, code: true } }),
   ]);
   return { clients, marches, types };
@@ -52,6 +55,10 @@ function memeReference(a, b) {
  * @returns {Promise<{ classe: boolean, motif?: string, ecrits: string[] }>}
  */
 export async function classerDocument(document, referentiels, { requete, log = console } = {}) {
+  // Une pièce archivée ne bouge plus toute seule : la ranger reste possible à
+  // la main, mais la machine n'y touche pas.
+  if (document.archiveLe) return { classe: false, motif: 'archivée', ecrits: [] };
+
   const lecture = analyser(document, referentiels.clients);
   if (!lecture.lisible) {
     // Trop peu de texte pour juger : ce n'est pas un échec, c'est une pièce
@@ -166,6 +173,7 @@ export async function classerLeFonds({ limite = 500, log = console } = {}) {
       // Une pièce rangée à la main ne se reclasse pas, même là où on a
       // laissé vide exprès : c'est un jugement humain.
       statutClassement: { not: 'manuel' },
+      archiveLe: null,
     },
     orderBy: { creeLe: 'desc' },
     take: limite,

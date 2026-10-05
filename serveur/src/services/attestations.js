@@ -38,16 +38,17 @@ function majorite(ids) {
  * @param {{ appliquer?: boolean, ids?: number[], utilisateurId?: number | null, log?: object }} options
  *   `appliquer: false` ne fait que décrire ce qui serait fait (simulation) ;
  *   `ids` limite le travail à ces attestations.
- * @returns {Promise<{ declares: object[], rejoints: object[], rattachees: number, illisibles: number }>}
+ *   Les attestations d'un marché archivé sont laissées de côté (`archives`).
+ * @returns {Promise<{ declares: object[], rejoints: object[], archives: object[], rattachees: number, illisibles: number }>}
  */
 export async function rattacherAttestations({ appliquer = true, ids, utilisateurId = null, log = console } = {}) {
   const [attestations, marches, internes] = await Promise.all([
     db.document.findMany({
-      where: { supprimeLe: null, marcheId: null, typeDocument: { code: 'ATT' }, statutClassement: { not: 'manuel' }, ...(ids ? { id: { in: ids } } : {}) },
+      where: { supprimeLe: null, marcheId: null, archiveLe: null, typeDocument: { code: 'ATT' }, statutClassement: { not: 'manuel' }, ...(ids ? { id: { in: ids } } : {}) },
       select: { id: true, texteOcr: true, clientId: true },
       orderBy: { id: 'asc' },
     }),
-    db.marche.findMany({ select: { id: true, reference: true, referenceNormalisee: true, clientId: true } }),
+    db.marche.findMany({ select: { id: true, reference: true, referenceNormalisee: true, clientId: true, archiveLe: true } }),
     db.client.findMany({ where: { interne: true }, select: { id: true } }),
   ]);
   const clientsInternes = new Set(internes.map((c) => c.id));
@@ -73,7 +74,7 @@ export async function rattacherAttestations({ appliquer = true, ids, utilisateur
     groupes.set(cle, groupe);
   }
 
-  const bilan = { declares: [], rejoints: [], rattachees: 0, illisibles };
+  const bilan = { declares: [], rejoints: [], archives: [], rattachees: 0, illisibles };
 
   for (const g of groupes.values()) {
     // L'écriture la plus lue sert de référence affichée.
@@ -83,6 +84,13 @@ export async function rattacherAttestations({ appliquer = true, ids, utilisateur
     // la société elle-même (elle signe, elle n'atteste pas).
     const clientId = marche?.clientId ?? majorite(g.attestations.map((a) => a.clientId).filter((id) => id && !clientsInternes.has(id)));
     const ligne = { reference, cle: g.cle, clientId, attestations: g.attestations.length };
+
+    // Le marché cité est archivé : on ne range rien seul, et on n'en déclare
+    // pas un second sous la même référence. L'attestation reste au tri.
+    if (marche?.archiveLe) {
+      bilan.archives.push(ligne);
+      continue;
+    }
 
     (marche ? bilan.rejoints : bilan.declares).push(ligne);
     bilan.rattachees += g.attestations.length;

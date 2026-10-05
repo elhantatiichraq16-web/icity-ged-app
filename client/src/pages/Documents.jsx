@@ -9,7 +9,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Download, FileText, Pencil, Search, Trash2, X } from 'lucide-react';
+import { Archive, ArrowLeft, Download, FileText, Pencil, Search, Trash2, X } from 'lucide-react';
 import { subject } from '@icity/commun/droits';
 import { api } from '../api.js';
 import { dateCourte, dateHeure } from '../format.js';
@@ -17,10 +17,12 @@ import { Alerte, Badge, Carte, EnTetePage, EtatVide, SqueletteLignes } from '../
 import { Bouton } from '../ui/Bouton.jsx';
 import { cx } from '../ui/cx.js';
 import { Confirmation } from '../ui/Modale.jsx';
+import { CaseACocher } from '../ui/Champ.jsx';
 import { useToasts } from '../ui/Toasts.jsx';
 import { useSession } from '../auth/session.jsx';
 import { Visionneuse } from '../ui/Visionneuse.jsx';
 import { CircuitDocument } from './CircuitDocument.jsx';
+import { useArchivage } from './Archives.jsx';
 import { ModalePiece } from './ModifierPiece.jsx';
 
 /** L'état de lecture d'un document, en clair. */
@@ -43,6 +45,8 @@ export function PageDocuments() {
   const sansMarche = parametres.get('sansMarche') ?? '';
   const typeId = parametres.get('typeId') ?? '';
   const statutOcr = parametres.get('statutOcr') ?? '';
+  // Les pièces des marchés archivés restent hors de la liste, sauf à les demander.
+  const archives = parametres.get('archives') ?? '';
 
   const [recherche, setRecherche] = useState(q);
 
@@ -50,13 +54,15 @@ export function PageDocuments() {
   // souvent, et l'ordre n'a aucune importance.
   const [choisis, setChoisis] = useState(() => new Set());
   const [confirmeLot, setConfirmeLot] = useState(false);
+  const [confirmeArchivage, setConfirmeArchivage] = useState(false);
+  const archivage = useArchivage();
 
   const fileAttente = useQueryClient();
   const { notifier } = useToasts();
   const { droits } = useSession();
 
   const requete = new URLSearchParams({ page: String(page) });
-  for (const [cle, valeur] of [['q', q], ['marcheId', marcheId], ['clientId', clientId], ['sansMarche', sansMarche], ['typeId', typeId], ['statutOcr', statutOcr]]) {
+  for (const [cle, valeur] of [['q', q], ['marcheId', marcheId], ['clientId', clientId], ['sansMarche', sansMarche], ['typeId', typeId], ['statutOcr', statutOcr], ['archives', archives]]) {
     if (valeur) requete.set(cle, valeur);
   }
 
@@ -125,6 +131,9 @@ export function PageDocuments() {
   }
 
   const peutSupprimer = droits.can('supprimer', 'Document');
+  // Archiver des pièces : la même décision de direction que pour les marchés.
+  const peutArchiver = droits.can('archiver', 'Marche');
+  const peutCocher = peutSupprimer || peutArchiver;
   const d = documents.data;
 
   return (
@@ -176,6 +185,7 @@ export function PageDocuments() {
             </option>
           ))}
         </select>
+        <CaseACocher libelle="Avec les archives" checked={archives === 'tous'} onChange={(e) => filtrer('archives', e.target.checked ? 'tous' : '')} />
         {sansMarche && (
           <span className="inline-flex h-10 items-center gap-2 rounded-[10px] border border-cyan bg-cyan-voile pr-1.5 pl-3 text-sm font-semibold text-cyan-texte">
             Sans marché
@@ -217,11 +227,39 @@ export function PageDocuments() {
           <Bouton variante="fantome" taille="petit" icone={X} onClick={() => setChoisis(new Set())}>
             Tout décocher
           </Bouton>
-          <Bouton variante="danger" taille="petit" icone={Trash2} onClick={() => setConfirmeLot(true)}>
-            Mettre en corbeille
-          </Bouton>
+          {peutArchiver && (
+            <Bouton variante="secondaire" taille="petit" icone={Archive} onClick={() => setConfirmeArchivage(true)}>
+              Archiver
+            </Bouton>
+          )}
+          {peutSupprimer && (
+            <Bouton variante="danger" taille="petit" icone={Trash2} onClick={() => setConfirmeLot(true)}>
+              Mettre en corbeille
+            </Bouton>
+          )}
         </Carte>
       )}
+
+      <Confirmation
+        ouverte={confirmeArchivage}
+        surChangement={setConfirmeArchivage}
+        titre={`Archiver ${choisis.size} pièce${choisis.size > 1 ? 's' : ''} ?`}
+        description="Elles quittent cette liste, les files du tri et le tableau de bord. Rien n’est supprimé : vous les retrouvez dans « Archives », toujours modifiables."
+        libelle="Archiver"
+        ton="principal"
+        chargement={archivage.isPending}
+        surConfirmer={() =>
+          archivage.mutate(
+            { ids: [...choisis], archiver: true, quoi: 'documents' },
+            {
+              onSuccess: () => {
+                setChoisis(new Set());
+                setConfirmeArchivage(false);
+              },
+            },
+          )
+        }
+      />
 
       <Confirmation
         ouverte={confirmeLot}
@@ -246,7 +284,7 @@ export function PageDocuments() {
               <caption className="sr-only">Documents du fonds</caption>
               <thead>
                 <tr className="border-b border-trait text-left text-[12px] tracking-wide text-encre-3 uppercase">
-                  {peutSupprimer && (
+                  {peutCocher && (
                     <th scope="col" className="w-10 px-3 py-3">
                       <input
                         type="checkbox"
@@ -275,7 +313,7 @@ export function PageDocuments() {
                     key={doc.id}
                     className={cx('border-b border-trait last:border-0 hover:bg-surface-2', choisis.has(doc.id) && 'bg-cyan-voile')}
                   >
-                    {peutSupprimer && (
+                    {peutCocher && (
                       <td className="px-3 py-2.5">
                         <input
                           type="checkbox"
@@ -293,13 +331,17 @@ export function PageDocuments() {
                           {doc.titre}
                         </span>
                       </Link>
+                      {doc.archive && !doc.archive.parSonMarche && <Badge className="mt-1">archivée</Badge>}
                     </td>
                     <td className="px-3 py-2.5">{doc.type ? <Badge>{doc.type.nom}</Badge> : <Badge ton="attente">À classer</Badge>}</td>
                     <td className="chiffres px-3 py-2.5 text-[13px]">
                       {doc.marche ? (
-                        <Link to={`/marches/${doc.marche.id}`} className="text-cyan-texte hover:underline">
-                          {doc.marche.reference}
-                        </Link>
+                        <>
+                          <Link to={`/marches/${doc.marche.id}`} className="text-cyan-texte hover:underline">
+                            {doc.marche.reference}
+                          </Link>
+                          {doc.marche.archive && <Badge className="ml-1.5">archivé</Badge>}
+                        </>
                       ) : (
                         <span className="text-encre-3">—</span>
                       )}
@@ -442,6 +484,7 @@ export function PageFicheDocument() {
           <p className="mt-1 flex flex-wrap items-center gap-2 text-[13px] text-encre-2">
             {d.type && <Badge>{d.type.nom}</Badge>}
             <Badge ton={ETATS_OCR[d.statutOcr]?.ton ?? 'neutre'}>{ETATS_OCR[d.statutOcr]?.libelle}</Badge>
+            {d.archive && <Badge>{d.archive.parSonMarche ? 'archivée avec son marché' : `archivée le ${dateCourte(d.archive.le)}`}</Badge>}
             {d.marche && (
               <Link to={`/marches/${d.marche.id}`} className="chiffres text-cyan-texte hover:underline">
                 {d.marche.reference}

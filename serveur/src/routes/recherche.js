@@ -35,7 +35,8 @@ export default async function routesRecherche(app) {
 
     return {
       ...documents,
-      marches: marches.map((m) => ({ id: m.id, reference: m.reference, objet: m.objet, phase: m.phase, client: m.client?.nom ?? null })),
+      // Les marchés archivés aussi : la recherche voit tout le fonds.
+      marches: marches.map((m) => ({ id: m.id, reference: m.reference, objet: m.objet, phase: m.phase, client: m.client?.nom ?? null, archive: Boolean(m.archiveLe) })),
     };
   });
 }

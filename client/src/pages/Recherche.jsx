@@ -158,6 +158,7 @@ export function PageRecherche() {
                   <FolderKanban className="size-5 shrink-0 text-cyan-texte" aria-hidden />
                   <span className="chiffres font-semibold text-cyan-texte">{m.reference}</span>
                   <span className="min-w-0 flex-1 truncate text-encre-2">{m.objet ?? m.client ?? ''}</span>
+                  {m.archive && <Badge>archivé</Badge>}
                   <BadgePhase phase={m.phase} />
                 </Carte>
               </Link>
@@ -183,6 +184,7 @@ export function PageRecherche() {
                         {r.marche.reference}
                       </Link>
                     )}
+                    {r.archive && <Badge>archivée</Badge>}
                     {r.client && <span className="text-[12.5px] text-encre-3">{r.client.nom}</span>}
                     <span className="ml-auto text-[12px] text-encre-3">
                       {r.pages ?? '?'} page{r.pages > 1 ? 's' : ''} · {dateCourte(r.dateDocument)}

@@ -5,6 +5,7 @@
 import { confidentialitesVisibles } from '@icity/commun/droits';
 import { db } from '../db.js';
 import { exigerConnexion } from '../plugins/authentification.js';
+import { DOUBLONS_HORS_ARCHIVES } from '../services/archivage.js';
 import { filtreAClasser } from './tri.js';
 
 /** @param {import('fastify').FastifyInstance} app */
@@ -22,7 +23,7 @@ export default async function routesNotifications(app) {
       db.compteMail.count({ where: { releveEnCoursDepuis: { not: null } } }),
       db.document.count({ where: { supprimeLe: null, creeLe: { gte: new Date(Date.now() - 86_400_000) } } }),
       trieur ? db.document.count({ where: filtreAClasser(requete.utilisateur) }) : 0,
-      trieur ? db.doublon.count({ where: { decision: 'en_attente', documentA: cote, documentB: cote } }) : 0,
+      trieur ? db.doublon.count({ where: { decision: 'en_attente', documentA: cote, documentB: cote, ...DOUBLONS_HORS_ARCHIVES } }) : 0,
     ]);
 
     const taches = [];

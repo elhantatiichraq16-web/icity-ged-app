@@ -144,6 +144,9 @@ function LignePiece({ piece: p, affaires, types }) {
                 <Sparkles className="size-3.5 text-cyan-texte" aria-hidden />
                 Référence lue : <strong className="chiffres">{reference.texte}</strong>
                 <span className="text-encre-3">(citée {reference.citations} fois)</span>
+                {/* Le classement automatique ne range rien dans un marché
+                    archivé : il le signale, et l'humain décide. */}
+                {reference.marche?.archive && !p.marche && <Badge>marché archivé</Badge>}
                 {reference.marche && !p.marche ? (
                   <Bouton taille="petit" variante="secondaire" icone={FolderInput} disabled={ranger.isPending} onClick={() => ranger.mutate({ id: p.id, corps: { marcheId: reference.marche.id } })}>
                     Rattacher à {reference.marche.reference}

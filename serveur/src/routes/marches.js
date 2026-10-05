@@ -26,6 +26,7 @@ import { db } from '../db.js';
 import { ErreurHttp, introuvable, valider } from '../erreurs.js';
 import { exiger, exigerConnexion } from '../plugins/authentification.js';
 import { doublonsEnAttente } from '../services/arbitrage-doublons.js';
+import { EN_COURS } from '../services/archivage.js';
 import { journaliser } from '../services/journal.js';
 import { codesParMarche, piecesParMarche } from '../services/phase-marche.js';
 import { nomFichier, versCsv } from '../services/export-csv.js';
@@ -63,6 +64,16 @@ const schemaMarche = z.object({
   objetTechnique: z.enum(OBJETS_TECHNIQUES).nullable().optional(),
   signe: z.boolean().optional(),
 });
+
+/** Archiver ou désarchiver : un lot de marchés, cochés dans la liste. */
+const schemaLotMarches = z.object({ ids: z.array(z.number().int().positive()).min(1).max(500) });
+
+/** Ce qu'une fiche marché charge avec elle. */
+const AVEC = {
+  client: true,
+  responsable: { select: { id: true, nom: true } },
+  archivePar: { select: { id: true, nom: true } },
+};
 
 /** À la création, la référence est la seule information obligatoire. */
 const schemaNouveauMarche = schemaMarche.extend({ reference: z.string().trim().min(2).max(80) });
@@ -124,6 +135,8 @@ function vueMarche(m, pieces = {}, nbDocuments = 0, codes = []) {
     responsable: m.responsable ? { id: m.responsable.id, nom: m.responsable.nom } : null,
     variantes: m.variantes ?? [],
     dossierOrigine: m.dossierOrigine,
+    // Archivé : hors de la vue courante, toujours modifiable. `null` s'il est en cours.
+    archive: m.archiveLe ? { le: m.archiveLe.toISOString(), par: m.archivePar?.nom ?? null } : null,
     // Calculés (§5) :
     pieces,
     phase,
@@ -148,10 +161,13 @@ export default async function routesMarches(app) {
    * HTTP interne.
    */
   async function listerMarches(requete) {
-    const { phase, clientId, incomplets, q, nature } = requete.query;
+    const { phase, clientId, incomplets, q, nature, archives } = requete.query;
 
     const marches = await db.marche.findMany({
       where: {
+        // Par défaut, les marchés en cours seulement : c'est aussi ce que
+        // reçoivent les listes déroulantes (verser, ranger, écrire au client).
+        ...(archives === 'seuls' ? { archiveLe: { not: null } } : archives === 'tous' ? {} : EN_COURS),
         ...(clientId ? { clientId: Number(clientId) } : {}),
         ...(q
           ? {
@@ -164,7 +180,7 @@ export default async function routesMarches(app) {
             }
           : {}),
       },
-      include: { client: true, responsable: { select: { id: true, nom: true } } },
+      include: AVEC,
       orderBy: [{ reference: 'asc' }],
     });
 
@@ -234,7 +250,7 @@ export default async function routesMarches(app) {
     const id = Number(requete.params.id) || 0;
     const m = await db.marche.findUnique({
       where: { id },
-      include: { client: true, responsable: { select: { id: true, nom: true } } },
+      include: AVEC,
     });
     if (!m) throw introuvable('Marché');
 
@@ -286,7 +302,11 @@ export default async function routesMarches(app) {
     const existant = await db.marche.findUnique({ where: { referenceNormalisee: cle } });
     if (existant) {
       return reponse.code(409).send({
-        message: `L’affaire « ${existant.reference} » existe déjà.`,
+        // Une référence archivée ne se recrée pas : on ramène à l'ancienne
+        // affaire, qu'il suffit de désarchiver.
+        message: existant.archiveLe
+          ? `L’affaire « ${existant.reference} » existe déjà, dans les archives. Désarchivez-la pour la reprendre.`
+          : `L’affaire « ${existant.reference} » existe déjà.`,
         existant: { id: existant.id, reference: existant.reference },
       });
     }
@@ -295,7 +315,7 @@ export default async function routesMarches(app) {
     for (const champDate of ['dateSignature', 'dateOs', 'dateFin']) {
       if (champDate in data) data[champDate] = date(data[champDate]);
     }
-    const cree = await db.marche.create({ data, include: { client: true, responsable: { select: { id: true, nom: true } } } });
+    const cree = await db.marche.create({ data, include: AVEC });
 
     await journaliser(
       { utilisateurId: requete.utilisateur.id, action: 'marche.cree', objetType: 'Marche', objetId: cree.id, apres: champs, ip: requete.ip },
@@ -333,7 +353,7 @@ export default async function routesMarches(app) {
     const apres = await db.marche.update({
       where: { id },
       data,
-      include: { client: true, responsable: { select: { id: true, nom: true } } },
+      include: AVEC,
     });
 
     await journaliser(
@@ -354,6 +374,51 @@ export default async function routesMarches(app) {
     return vueMarche(apres, pieces, 0, codes);
   });
 
+  // ── Archiver, désarchiver ─────────────────────────────────────
+  /**
+   * Archiver des marchés : ils sortent de la vue courante, sans rien perdre,
+   * et restent modifiables depuis leur fiche.
+   *
+   * Par lot, parce qu'on archive en fin d'exercice tout ce qui est terminé ;
+   * un marché seul n'est qu'un lot d'un. Ce qui est déjà dans l'état demandé
+   * est ignoré : relancer le geste ne change ni la date ni l'auteur.
+   */
+  for (const [chemin, archiver] of [
+    ['/api/marches/archiver', true],
+    ['/api/marches/desarchiver', false],
+  ]) {
+    app.post(chemin, { preHandler: exiger('archiver', 'Marche') }, async (requete) => {
+      const { ids } = valider(schemaLotMarches, requete.body);
+      const vises = await db.marche.findMany({
+        where: { id: { in: ids }, archiveLe: archiver ? null : { not: null } },
+        select: { id: true, reference: true },
+      });
+      if (!vises.length) return { modifies: 0 };
+
+      await db.marche.updateMany({
+        where: { id: { in: vises.map((m) => m.id) } },
+        data: archiver ? { archiveLe: new Date(), archiveParId: requete.utilisateur.id } : { archiveLe: null, archiveParId: null },
+      });
+
+      // Une ligne par marché : c'est sur sa fiche qu'on relira qui l'a
+      // archivé, et quand.
+      for (const m of vises) {
+        await journaliser(
+          {
+            utilisateurId: requete.utilisateur.id,
+            action: archiver ? 'marche.archive' : 'marche.desarchive',
+            objetType: 'Marche',
+            objetId: m.id,
+            commentaire: m.reference,
+            ip: requete.ip,
+          },
+          requete.log,
+        );
+      }
+      return { modifies: vises.length };
+    });
+  }
+
   // ── Clients ───────────────────────────────────────────────────
   /**
    * Les clients, avec leurs compteurs et leur statut.
@@ -368,7 +433,9 @@ export default async function routesMarches(app) {
   async function listerClients(requete) {
     const [clients, marches, documents] = await Promise.all([
       db.client.findMany({ orderBy: { nom: 'asc' } }),
-      db.marche.findMany({ where: { clientId: { not: null } }, select: { id: true, clientId: true, statutAffaire: true } }),
+      // Les compteurs d'un client portent sur ses marchés en cours : un
+      // marché archivé ne fait plus de lui un client « actif ».
+      db.marche.findMany({ where: { clientId: { not: null }, ...EN_COURS }, select: { id: true, clientId: true, statutAffaire: true } }),
       db.document.groupBy({ by: ['clientId'], where: { supprimeLe: null, clientId: { not: null } }, _count: { _all: true } }),
     ]);
     const ids = marches.map((m) => m.id);
@@ -463,8 +530,9 @@ export default async function routesMarches(app) {
 
     const marches = await db.marche.findMany({
       where: { clientId: id },
-      include: { client: true, responsable: { select: { id: true, nom: true } } },
-      orderBy: { reference: 'asc' },
+      include: AVEC,
+      // Les marchés en cours d'abord, les archives ensuite.
+      orderBy: [{ archiveLe: { sort: 'asc', nulls: 'first' } }, { reference: 'asc' }],
     });
     const ids = marches.map((m) => m.id);
     const [pieces, codes] = await Promise.all([piecesParMarche(ids), codesParMarche(ids)]);

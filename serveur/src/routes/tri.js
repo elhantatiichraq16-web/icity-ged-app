@@ -16,6 +16,7 @@
 import { confidentialitesVisibles } from '@icity/commun/droits';
 import { memeAffaire } from '@icity/commun/marches';
 import { db } from '../db.js';
+import { DOUBLONS_HORS_ARCHIVES, EN_COURS, PIECES_HORS_ARCHIVES } from '../services/archivage.js';
 import { ErreurHttp, introuvable } from '../erreurs.js';
 import { exiger, exigerConnexion } from '../plugins/authentification.js';
 import { analyser } from '../services/classement.js';
@@ -45,7 +46,8 @@ export function filtreAClasser(utilisateur) {
     statutOcr: { notIn: ['en_attente', 'en_cours'] },
     OR: [{ marcheId: null }, { typeDocumentId: null }],
     NOT: { typeDocument: { code: 'ATT' } },
-    AND: [visibles(utilisateur)],
+    // Les pièces archivées ne sont plus à classer : on repart à zéro.
+    AND: [visibles(utilisateur), PIECES_HORS_ARCHIVES],
   };
 }
 
@@ -53,7 +55,7 @@ export function filtreAClasser(utilisateur) {
 async function contexteIndices() {
   const [clients, marches, types] = await Promise.all([
     db.client.findMany({ orderBy: [{ interne: 'asc' }, { nom: 'asc' }] }),
-    db.marche.findMany({ select: { id: true, reference: true } }),
+    db.marche.findMany({ select: { id: true, reference: true, archiveLe: true } }),
     db.typeDocument.findMany({ select: { id: true, code: true, nom: true } }),
   ]);
   return { clients, marches, types };
@@ -66,7 +68,10 @@ async function contexteIndices() {
 function avecIndices(d, { clients, marches, types }) {
   const lecture = analyser(d, clients);
   const lu = lecture.lisible ? lecture.reference : null;
-  const connu = lu ? marches.find((m) => memeAffaire(m.reference, lu.reference)) : null;
+  const trouve = lu ? marches.find((m) => memeAffaire(m.reference, lu.reference)) : null;
+  // Une pièce qui cite un marché archivé : le classement l'a laissée ici
+  // exprès. L'indice le dit, pour qu'on choisisse de le désarchiver ou non.
+  const connu = trouve ? { id: trouve.id, reference: trouve.reference, archive: Boolean(trouve.archiveLe) } : null;
   const type = lecture.lisible && lecture.type ? types.find((t) => t.code === lecture.type.code) : null;
   return {
     ...petit(d),
@@ -114,24 +119,24 @@ export default async function routesTri(app) {
 
     const [paires, lectures, attestations, affaires, aClasser, contexte] = await Promise.all([
       db.doublon.findMany({
-        where: { decision: 'en_attente', documentA: cotes, documentB: cotes },
+        where: { decision: 'en_attente', documentA: cotes, documentB: cotes, ...DOUBLONS_HORS_ARCHIVES },
         include: { documentA: { include: avec }, documentB: { include: avec } },
         orderBy: { score: 'desc' },
         take: 100,
       }),
       db.document.findMany({
-        where: { supprimeLe: null, statutOcr: { in: ['illisible', 'echec'] }, ...visibles(requete.utilisateur) },
+        where: { supprimeLe: null, statutOcr: { in: ['illisible', 'echec'] }, ...visibles(requete.utilisateur), ...PIECES_HORS_ARCHIVES },
         include: avec,
         orderBy: { creeLe: 'desc' },
         take: 100,
       }),
       db.document.findMany({
-        where: { supprimeLe: null, marcheId: null, statutClassement: { not: 'manuel' }, typeDocument: { code: 'ATT' }, ...visibles(requete.utilisateur) },
+        where: { supprimeLe: null, marcheId: null, archiveLe: null, statutClassement: { not: 'manuel' }, typeDocument: { code: 'ATT' }, ...visibles(requete.utilisateur) },
         include: avec,
         orderBy: { id: 'asc' },
         take: 100,
       }),
-      db.marche.findMany({ where: { clientId: null }, select: { id: true, reference: true, objet: true }, orderBy: { reference: 'asc' } }),
+      db.marche.findMany({ where: { clientId: null, ...EN_COURS }, select: { id: true, reference: true, objet: true }, orderBy: { reference: 'asc' } }),
       db.document.count({ where: filtreAClasser(requete.utilisateur) }),
       contexteIndices(),
     ]);

@@ -61,6 +61,8 @@ model Utilisateur {
   jetons          Jeton[]
   journal         Journal[]
   marchesSuivis   Marche[]          @relation("MarchesSuivis")
+  marchesArchives Marche[]          @relation("MarchesArchives")
+  documentsArchives Document[]      @relation("DocumentsArchives")
   documentsVerses Document[]        @relation("DocumentsVerses")
   versionsDeposees DocumentVersion[] @relation("VersionsDeposees")
   achatsSuivis    LigneAchat[]      @relation("SuiviAchat")
@@ -216,6 +218,12 @@ model Marche {
   /// recalcule dès qu'un document du marché change.
   phase                String    @default("attente") @db.VarChar(20)
 
+  /// Archivé : le marché sort de la vue courante (liste, tableau de bord,
+  /// classement) mais reste consultable, en lecture seule. Vide = en cours.
+  archiveLe            DateTime?    @map("archive_le")
+  archiveParId         Int?         @map("archive_par")
+  archivePar           Utilisateur? @relation("MarchesArchives", fields: [archiveParId], references: [id], onDelete: SetNull)
+
   creeLe    DateTime @default(now()) @map("cree_le")
   modifieLe DateTime @updatedAt @map("modifie_le")
 
@@ -226,6 +234,7 @@ model Marche {
 
   @@index([clientId])
   @@index([phase])
+  @@index([archiveLe])
   @@map("marches")
 }
 
@@ -387,6 +396,12 @@ model Document {
   versePar        Utilisateur?  @relation("DocumentsVerses", fields: [verseParId], references: [id], onDelete: SetNull)
   /// Suppression douce : la corbeille garde 30 jours (§9).
   supprimeLe      DateTime?     @map("supprime_le")
+  /// Archivée : la pièce sort de la vue courante (documents, tri, tableau de
+  /// bord) mais reste consultable et modifiable. Une pièce l'est aussi quand
+  /// son marché est archivé. Rien à voir avec l'état « archive » du circuit.
+  archiveLe       DateTime?     @map("archive_le")
+  archiveParId    Int?          @map("archive_par")
+  archivePar      Utilisateur?  @relation("DocumentsArchives", fields: [archiveParId], references: [id], onDelete: SetNull)
   creeLe          DateTime      @default(now()) @map("cree_le")
   modifieLe       DateTime      @updatedAt @map("modifie_le")
 
@@ -402,6 +417,7 @@ model Document {
   @@index([clientId])
   @@index([typeDocumentId])
   @@index([supprimeLe])
+  @@index([archiveLe])
   @@index([statutOcr])
   @@index([lotScan])
   /// Index plein texte (§11, écran 5) : c'est lui qui rend la recherche

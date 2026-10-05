@@ -5,11 +5,14 @@
  * Deux onglets : les marchés gagnés, et les appels d'offres qui ne le sont
  * pas (ou pas encore). Le serveur fait le tri (`appelOffres`) d'après les
  * pièces du dossier et le statut choisi à la main.
+ *
+ * Les marchés archivés n'y figurent pas : ils ont leur page, « Archives ».
+ * La direction coche ici ceux qui sont terminés pour les y ranger.
  */
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowRight, ArrowUp, Check, Download, LoaderCircle, Minus, Plus, Search, Upload, X } from 'lucide-react';
+import { Archive, ArrowDown, ArrowRight, ArrowUp, Check, Download, LoaderCircle, Minus, Plus, Search, Upload, X } from 'lucide-react';
 import { ORDRE_PHASES, PHASES, PIECES_CYCLE, STATUTS_APPEL_OFFRES } from '@icity/commun/marches';
 import { api } from '../api.js';
 import { dateCourte } from '../format.js';
@@ -18,7 +21,9 @@ import { Bouton } from '../ui/Bouton.jsx';
 import { CaseACocher } from '../ui/Champ.jsx';
 import { cx } from '../ui/cx.js';
 import { useToasts } from '../ui/Toasts.jsx';
+import { Confirmation } from '../ui/Modale.jsx';
 import { useSession } from '../auth/session.jsx';
+import { CaseLigne, useArchivage } from './Archives.jsx';
 
 export const CLE_MARCHES = ['marches'];
 
@@ -85,8 +90,23 @@ function StatutAppelOffres({ marche, peutModifier }) {
   );
 }
 
+/** La case d'en-tête qui coche, ou décoche, toutes les lignes affichées. */
+function CaseToutCocher({ selection }) {
+  return (
+    <th scope="col" className="w-10 px-3 py-3">
+      <input
+        type="checkbox"
+        aria-label="Tout cocher"
+        checked={selection.toutCoche}
+        onChange={selection.basculerTout}
+        className="size-4 cursor-pointer rounded accent-[var(--cyan)]"
+      />
+    </th>
+  );
+}
+
 /** L'onglet des appels d'offres : ce qui a été préparé ou déposé, sans être gagné. */
-function TableauAppelsOffres({ appels, peutModifier }) {
+function TableauAppelsOffres({ appels, peutModifier, selection }) {
   const aller = useNavigate();
   if (!appels.length) {
     return (
@@ -104,6 +124,7 @@ function TableauAppelsOffres({ appels, peutModifier }) {
           <caption className="sr-only">Appels d’offres non gagnés</caption>
           <thead>
             <tr className="border-b border-trait text-left text-[12px] tracking-wide text-encre-3 uppercase">
+              {selection && <CaseToutCocher selection={selection} />}
               <th scope="col" className="px-4 py-3 font-semibold">Référence</th>
               <th scope="col" className="px-4 py-3 font-semibold">Client</th>
               <th scope="col" className="px-4 py-3 font-semibold">Objet</th>
@@ -114,6 +135,7 @@ function TableauAppelsOffres({ appels, peutModifier }) {
           <tbody>
             {appels.map((m) => (
               <tr key={m.id} onClick={() => aller(`/marches/${m.id}`)} className="cursor-pointer border-b border-trait last:border-0 hover:bg-surface-2">
+                {selection && <CaseLigne libelle={`Cocher ${m.reference}`} checked={selection.coches.has(m.id)} onChange={() => selection.basculer(m.id)} />}
                 <td className="px-4 py-3">
                   <Link to={`/marches/${m.id}`} onClick={(e) => e.stopPropagation()} className="chiffres font-medium text-cyan-texte hover:underline">
                     {m.reference}
@@ -241,6 +263,8 @@ export function PageMarches() {
   const [incomplets, setIncomplets] = useState(false);
   const [recherche, setRecherche] = useState('');
   const [tri, setTri] = useState({ colonne: 'reference', sens: 1 });
+  const [coches, setCoches] = useState(() => new Set());
+  const [confirmerArchivage, setConfirmerArchivage] = useState(false);
 
   const aller = useNavigate();
   const file = useQueryClient();
@@ -253,6 +277,8 @@ export function PageMarches() {
   // le dépôt a besoin de l'identifiant, le tableau ne connaît que le code.
   const typeParCode = new Map((referentiels.data?.types ?? []).map((t) => [t.code, t.id]));
   const peutVerser = droits.can('verser', 'Document');
+  const peutArchiver = droits.can('archiver', 'Marche');
+  const archivage = useArchivage();
   const typeAttestation = (referentiels.data?.types ?? []).find((t) => t.code === 'ATT');
 
   // Les attestations mises à part : leur numéro de marché ne se lit pas.
@@ -315,6 +341,37 @@ export function PageMarches() {
   const total = gagnes.length;
   const enAttente = attestationsEnAttente.data?.total ?? 0;
 
+  // La sélection ne porte que sur les lignes affichées : changer d'onglet ou
+  // de filtre ne doit pas faire archiver ce qu'on ne voit plus.
+  const affiches = onglet === 'ao' ? appels : visibles;
+  const choisis = affiches.filter((m) => coches.has(m.id));
+  const selection = peutArchiver
+    ? {
+        coches,
+        toutCoche: affiches.length > 0 && choisis.length === affiches.length,
+        basculer: (id) =>
+          setCoches((avant) => {
+            const apres = new Set(avant);
+            if (apres.has(id)) apres.delete(id);
+            else apres.add(id);
+            return apres;
+          }),
+        basculerTout: () => setCoches(choisis.length === affiches.length ? new Set() : new Set(affiches.map((m) => m.id))),
+      }
+    : null;
+
+  function archiver() {
+    archivage.mutate(
+      { ids: choisis.map((m) => m.id), archiver: true },
+      {
+        onSuccess: () => {
+          setCoches(new Set());
+          setConfirmerArchivage(false);
+        },
+      },
+    );
+  }
+
   return (
     <div className="animate-apparition">
       <EnTetePage
@@ -322,6 +379,11 @@ export function PageMarches() {
         description="Chaque affaire, sa phase calculée d’après les pièces versées, et ce qui manque à son dossier."
         actions={
           <div className="flex items-center gap-3">
+            {peutArchiver && (
+              <Bouton variante="secondaire" taille="petit" icone={Archive} disabled={!choisis.length} onClick={() => setConfirmerArchivage(true)}>
+                Archiver{choisis.length ? ` (${choisis.length})` : ''}
+              </Bouton>
+            )}
             {onglet === 'marches' && (
               <>
                 <Badge ton="cyan">{total} marchés</Badge>
@@ -381,7 +443,7 @@ export function PageMarches() {
             <SqueletteLignes lignes={3} />
           </Carte>
         ) : (
-          <TableauAppelsOffres appels={appels} peutModifier={droits.can('modifier', 'Marche')} />
+          <TableauAppelsOffres appels={appels} peutModifier={droits.can('modifier', 'Marche')} selection={selection} />
         )
       ) : (
       <>
@@ -430,6 +492,7 @@ export function PageMarches() {
               <caption className="sr-only">Marchés, avec leur phase et leurs pièces</caption>
               <thead>
                 <tr className="border-b border-trait text-[12px] tracking-wide text-encre-3 uppercase">
+                  {selection && <CaseToutCocher selection={selection} />}
                   <Colonne id="reference">Référence</Colonne>
                   <Colonne id="client">Client</Colonne>
                   <th scope="col" className="px-3 py-3 text-left font-semibold">Objet</th>
@@ -456,6 +519,7 @@ export function PageMarches() {
                     onClick={() => aller(`/marches/${m.id}`)}
                     className="cursor-pointer border-b border-trait last:border-0 hover:bg-surface-2"
                   >
+                    {selection && <CaseLigne libelle={`Cocher ${m.reference}`} checked={coches.has(m.id)} onChange={() => selection.basculer(m.id)} />}
                     <td className="px-3 py-2.5">
                       <Link
                         to={`/marches/${m.id}`}
@@ -516,6 +580,17 @@ export function PageMarches() {
       )}
       </>
       )}
+
+      <Confirmation
+        ouverte={confirmerArchivage}
+        surChangement={setConfirmerArchivage}
+        titre={`Archiver ${choisis.length} ${onglet === 'ao' ? 'appel' : 'marché'}${choisis.length > 1 ? 's' : ''} ${onglet === 'ao' ? 'd’offres ' : ''}?`}
+        description="Ils quittent cette liste et le tableau de bord, et le classement automatique n’y range plus rien. Rien n’est supprimé : vous les retrouvez dans « Archives », toujours modifiables, et vous pouvez les désarchiver à tout moment."
+        libelle="Archiver"
+        ton="principal"
+        chargement={archivage.isPending}
+        surConfirmer={archiver}
+      />
     </div>
   );
 }

@@ -17,6 +17,7 @@ import crypto from 'node:crypto';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import { db } from '../db.js';
+import { EN_COURS } from './archivage.js';
 import { dechiffrer } from '../securite/crypto.js';
 import { preparerMail, rattacherParFil } from './courriel-entrant.js';
 import { recalculerPhase } from './phase-marche.js';
@@ -29,7 +30,9 @@ const VERROU_PERIME_MINUTES = 15;
 async function contexte(compte) {
   const [clients, marches] = await Promise.all([
     db.client.findMany({ orderBy: [{ interne: 'asc' }, { nom: 'asc' }] }),
-    db.marche.findMany({ select: { id: true, reference: true, referenceNormalisee: true } }),
+    // Un mail qui cite un marché archivé reste « à rattacher » : il ne
+    // rejoint pas tout seul une affaire qu'on a rangée.
+    db.marche.findMany({ where: EN_COURS, select: { id: true, reference: true, referenceNormalisee: true } }),
   ]);
   return { compte, clients, marches };
 }

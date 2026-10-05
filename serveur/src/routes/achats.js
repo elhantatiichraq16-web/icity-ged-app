@@ -169,8 +169,10 @@ export default async function routesAchats(app) {
   /** Les marchés qui ont des achats, pour le filtre de l'écran. */
   app.get('/api/achats/marches', { preHandler: exiger('lire', 'Achat') }, async () => {
     const groupes = await db.ligneAchat.groupBy({ by: ['marcheId'], _count: { _all: true } });
+    // Les achats d'un marché archivé ne sortent pas du filtre courant ; on
+    // les retrouve depuis la fiche du marché.
     const marches = await db.marche.findMany({
-      where: { id: { in: groupes.map((g) => g.marcheId) } },
+      where: { id: { in: groupes.map((g) => g.marcheId) }, archiveLe: null },
       select: { id: true, reference: true, objet: true, client: { select: { nom: true } } },
       orderBy: { reference: 'asc' },
     });

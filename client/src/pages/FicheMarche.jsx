@@ -6,7 +6,7 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, Check, ChevronRight, FileText, Upload, X } from 'lucide-react';
+import { AlertTriangle, Archive, ArchiveRestore, ArrowLeft, Check, ChevronRight, FileText, Upload, X } from 'lucide-react';
 import { CONSERVATIONS, ORDRE_PHASES, PHASES, PIECES_CYCLE, STATUTS_AFFAIRE } from '@icity/commun/marches';
 import { api } from '../api.js';
 import { useSession } from '../auth/session.jsx';
@@ -16,7 +16,9 @@ import { Bouton } from '../ui/Bouton.jsx';
 import { Champ, Selection } from '../ui/Champ.jsx';
 import { Alerte, Badge, Carte, EtatVide, SqueletteLignes } from '../ui/Elements.jsx';
 import { cx } from '../ui/cx.js';
+import { Confirmation } from '../ui/Modale.jsx';
 import { useToasts } from '../ui/Toasts.jsx';
+import { useArchivage } from './Archives.jsx';
 import { ETATS_OCR } from './Documents.jsx';
 import { BadgeEtatMarche, CLE_MARCHES } from './Marches.jsx';
 
@@ -49,9 +51,20 @@ export function PageFicheMarche() {
 
   return (
     <div className="animate-apparition">
-      <Link to="/marches" className="mb-4 inline-flex items-center gap-1.5 text-[13.5px] font-medium text-cyan-texte hover:underline">
-        <ArrowLeft className="size-4" aria-hidden /> Tous les marchés
-      </Link>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <Link to={m.archive ? '/archives' : '/marches'} className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-cyan-texte hover:underline">
+          <ArrowLeft className="size-4" aria-hidden /> {m.archive ? 'Archives' : 'Tous les marchés'}
+        </Link>
+        <BoutonArchivage m={m} />
+      </div>
+
+      {m.archive && (
+        <Alerte ton="info" titre="Marché archivé" className="mb-4">
+          Archivé le {dateCourte(m.archive.le)}
+          {m.archive.par ? ` par ${m.archive.par}` : ''}. Il n’apparaît plus dans la liste des marchés ni au tableau de bord, et le
+          classement automatique n’y range plus rien. Vous pouvez toujours le consulter et le modifier.
+        </Alerte>
+      )}
 
       <EnTeteMarche m={m} />
 
@@ -96,6 +109,40 @@ export function PageFicheMarche() {
         </Carte>
       )}
     </div>
+  );
+}
+
+/**
+ * Archiver ce marché, ou le désarchiver : réservé à la direction. Le geste
+ * demande confirmation, parce qu'il change ce que tout le monde voit.
+ */
+function BoutonArchivage({ m }) {
+  const [confirmer, setConfirmer] = useState(false);
+  const { droits } = useSession();
+  const archivage = useArchivage();
+  if (!droits.can('archiver', 'Marche')) return null;
+
+  const archiver = !m.archive;
+  return (
+    <>
+      <Bouton variante="secondaire" taille="petit" icone={archiver ? Archive : ArchiveRestore} onClick={() => setConfirmer(true)}>
+        {archiver ? 'Archiver' : 'Désarchiver'}
+      </Bouton>
+      <Confirmation
+        ouverte={confirmer}
+        surChangement={setConfirmer}
+        titre={archiver ? `Archiver ${m.reference} ?` : `Désarchiver ${m.reference} ?`}
+        description={
+          archiver
+            ? 'Il quitte la liste des marchés et le tableau de bord. Rien n’est supprimé : vous le retrouvez dans « Archives », toujours modifiable.'
+            : 'Il revient dans la liste des marchés et le tableau de bord, et le classement automatique pourra de nouveau y ranger des pièces.'
+        }
+        libelle={archiver ? 'Archiver' : 'Désarchiver'}
+        ton="principal"
+        chargement={archivage.isPending}
+        surConfirmer={() => archivage.mutate({ ids: [m.id], archiver }, { onSuccess: () => setConfirmer(false) })}
+      />
+    </>
   );
 }
 
