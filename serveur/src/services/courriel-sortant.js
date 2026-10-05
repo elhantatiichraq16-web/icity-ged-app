@@ -193,6 +193,18 @@ export async function envoyerMail({ compteId, a, objet, texte, documentIds = [],
  * Sert au bouton « Tester » de l'écran Paramètres : un mot de passe
  * d'application valide en IMAP ne l'est pas toujours en SMTP.
  */
+/**
+ * Un message interne de l'application (le rappel du matin) : il part par le
+ * compte de messagerie, mais ne s'archive pas dans le courriel des affaires.
+ *
+ * @param {{ compteId: number, a: string, objet: string, texte: string }} options
+ */
+export async function envoyerSansArchiver({ compteId, a, objet, texte }) {
+  const compte = await db.compteMail.findUnique({ where: { id: compteId } });
+  if (!compte || !compte.actif) throw new Error("Aucun compte d'envoi actif.");
+  await transportDe(compte).sendMail({ from: `"${compte.libelle}" <${compte.adresse}>`, to: a, subject: objet, text: texte, html: htmlDepuisTexte(texte) });
+}
+
 export async function testerEnvoi(compteId) {
   const compte = await db.compteMail.findUnique({ where: { id: compteId } });
   if (!compte) throw new Error("Ce compte n'existe pas.");

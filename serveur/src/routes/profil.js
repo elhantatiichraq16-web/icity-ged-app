@@ -67,6 +67,13 @@ export default async function routesProfil(app) {
     return { utilisateur: utilisateurPublic(u) };
   });
 
+  /** Recevoir, ou non, le rappel du matin (ses activités par mail). */
+  app.patch('/api/profil/rappels', async (requete) => {
+    const { rappelQuotidien } = valider(z.object({ rappelQuotidien: z.boolean() }), requete.body);
+    const u = await db.utilisateur.update({ where: { id: requete.utilisateur.id }, data: { rappelQuotidien }, include: { role: true } });
+    return { utilisateur: utilisateurPublic(u) };
+  });
+
   // ── Avatar ────────────────────────────────────────────────────
   app.post('/api/profil/avatar', async (requete) => {
     const fichier = await requete.file({ limits: { fileSize: TAILLE_MAX_AVATAR, files: 1 } });

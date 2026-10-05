@@ -54,6 +54,11 @@ model Utilisateur {
   // Codes de secours, stockés hachés comme des mots de passe.
   codesSecours         Json?     @map("codes_secours")
 
+  // Le rappel du matin, comme le résumé d'Odoo : les activités en retard et du
+  // jour, par mail. Désactivable dans le profil ; jamais deux fois le même jour.
+  rappelQuotidien      Boolean   @default(true) @map("rappel_quotidien")
+  rappelEnvoyeLe       DateTime? @map("rappel_envoye_le") @db.Date
+
   creeLe    DateTime @default(now()) @map("cree_le")
   modifieLe DateTime @updatedAt @map("modifie_le")
 

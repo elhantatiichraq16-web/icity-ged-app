@@ -39,6 +39,7 @@ export function utilisateurPublic(u) {
     avatar: u.avatar ? `/api/utilisateurs/${u.id}/avatar?v=${encodeURIComponent(u.avatar.slice(0, 8))}` : null,
     deuxFacteurs: Boolean(u.deuxFacteursActiveLe),
     derniereConnexion: u.derniereConnexion,
+    rappelQuotidien: u.rappelQuotidien,
   };
 }
 

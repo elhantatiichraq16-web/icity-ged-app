@@ -4,7 +4,8 @@
  *  - relève du courriel toutes les 10 minutes (§10) ;
  *  - écoute IMAP IDLE quand c'est possible : Gmail prévient dès qu'un message
  *    arrive, et le document apparaît dans les secondes qui suivent (§10 bis) ;
- *  - vidage de la corbeille au-delà de 30 jours (§9), chaque nuit.
+ *  - vidage de la corbeille au-delà de 30 jours (§9), chaque nuit ;
+ *  - le rappel du matin : les activités de chacun, par mail, à 8 h.
  *
  * Un seul processus, une tâche à la fois : ce PC a 3,7 Go de mémoire (§2).
  */
@@ -18,6 +19,7 @@ import { detecterDoublons } from './services/arbitrage-doublons.js';
 import { classerLeFonds } from './services/classement-auto.js';
 import { purgerJournal, viderCorbeille } from './services/entretien.js';
 import { resteALire, tesseractDisponible, traiterFile } from './services/ocr.js';
+import { envoyerRappelsDuJour } from './services/rappels.js';
 import { lireFacturesApresOcr } from './services/suivi-achats.js';
 
 const journal = console;
@@ -135,7 +137,27 @@ cron.schedule(
   { timezone: 'Africa/Casablanca' },
 );
 
+/** Le rappel du matin : une fois par jour et par personne, du lundi au vendredi. */
+async function rappelsDuMatin() {
+  try {
+    const { envoyes } = await envoyerRappelsDuJour({ log: journal });
+    if (envoyes) journal.log(`Rappels du jour : ${envoyes} envoyé(s).`);
+  } catch (erreur) {
+    journal.error('Rappels du jour en échec :', erreur.message);
+  }
+}
+cron.schedule('0 8 * * 1-5', rappelsDuMatin, { timezone: 'Africa/Casablanca' });
+
 await ecouterLesComptes();
+
+// Le PC était éteint à 8 h : le rappel part au démarrage, s'il n'est pas déjà
+// parti aujourd'hui (un jour ouvré, après 8 h, heure du Maroc).
+{
+  const maintenant = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Africa/Casablanca', weekday: 'short', hour: 'numeric', hourCycle: 'h23' }).formatToParts(new Date());
+  const jour = maintenant.find((p) => p.type === 'weekday')?.value ?? '';
+  const heure = Number(maintenant.find((p) => p.type === 'hour')?.value ?? 0);
+  if (!/^(sam|dim)/i.test(jour) && heure >= 8) await rappelsDuMatin();
+}
 
 // L'état de l'OCR est dit une fois, au démarrage : sans Tesseract les scans
 // resteront introuvables par la recherche, et il vaut mieux le savoir tout de

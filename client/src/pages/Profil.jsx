@@ -4,7 +4,7 @@
  */
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Copy, KeyRound, LaptopMinimal, ShieldCheck, ShieldOff, Trash2, Upload } from 'lucide-react';
+import { BellRing, Copy, KeyRound, LaptopMinimal, ShieldCheck, ShieldOff, Trash2, Upload } from 'lucide-react';
 import { schemaChangerMotDePasse, schemaCodeDeuxFacteurs, schemaProfil } from '@icity/commun/schemas';
 import { api } from '../api.js';
 import { CLE_MOI, useSession } from '../auth/session.jsx';
@@ -49,8 +49,39 @@ export function PageProfil() {
         <MotDePasse />
         <DeuxFacteurs />
         <Sessions profil={profil} />
+        <Rappels />
       </div>
     </div>
+  );
+}
+
+// ── Le rappel du matin ───────────────────────────────────────────
+/** Recevoir, ou non, ses activités du jour par mail à 8 h, comme le résumé d'Odoo. */
+function Rappels() {
+  const { utilisateur } = useSession();
+  const client = useQueryClient();
+  const { notifier } = useToasts();
+  const changer = useMutation({
+    mutationFn: (rappelQuotidien) => api('/api/profil/rappels', { methode: 'PATCH', corps: { rappelQuotidien } }),
+    onSuccess: ({ utilisateur: u }) => {
+      client.setQueryData(CLE_MOI, (ancien) => ({ ...ancien, utilisateur: u }));
+      notifier({ titre: u.rappelQuotidien ? 'Rappel activé' : 'Rappel désactivé', message: u.rappelQuotidien ? 'Vous le recevrez chaque jour ouvré à 8 h.' : 'Vous ne recevrez plus le mail du matin.', ton: 'ok' });
+    },
+    onError: (e) => notifier({ titre: 'Réglage non enregistré', message: e.message, ton: 'alerte' }),
+  });
+  return (
+    <Section titre="Rappel du matin" icone={BellRing} description="Chaque jour ouvré à 8 h, un mail liste vos activités en retard et celles du jour. Rien ne part les jours où vous n’avez rien à faire.">
+      <label className="flex cursor-pointer items-center gap-3 text-[14px]">
+        <input
+          type="checkbox"
+          checked={utilisateur.rappelQuotidien !== false}
+          disabled={changer.isPending}
+          onChange={(e) => changer.mutate(e.target.checked)}
+          className="size-5 accent-[var(--cyan)]"
+        />
+        Recevoir le rappel à <span className="font-medium">{utilisateur.email}</span>
+      </label>
+    </Section>
   );
 }
 
