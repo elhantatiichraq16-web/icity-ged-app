@@ -9,22 +9,22 @@
  * Les marchés archivés n'y figurent pas : ils ont leur page, « Archives ».
  * La direction coche ici ceux qui sont terminés pour les y ranger.
  */
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, ArrowDown, ArrowRight, ArrowUp, Check, Columns3, LayoutList, Download, LoaderCircle, Minus, Plus, Search, Upload, X } from 'lucide-react';
+import { Archive, ArrowDown, ArrowRight, ArrowUp, Check, ChevronRight, Columns3, LayoutList, Download, LoaderCircle, Minus, Plus, Search, Upload, X } from 'lucide-react';
 import { ORDRE_PHASES, PHASES, PIECES_CYCLE, STATUTS_APPEL_OFFRES } from '@icity/commun/marches';
 import { api } from '../api.js';
-import { dateCourte } from '../format.js';
+import { dateCourte, montant } from '../format.js';
 import { Badge, Carte, EnTetePage, EtatVide, SqueletteLignes } from '../ui/Elements.jsx';
 import { Bouton } from '../ui/Bouton.jsx';
-import { CaseACocher } from '../ui/Champ.jsx';
 import { cx } from '../ui/cx.js';
 import { useToasts } from '../ui/Toasts.jsx';
 import { Confirmation } from '../ui/Modale.jsx';
 import { useSession } from '../auth/session.jsx';
 import { CaseLigne, RappelArchives, useArchivage } from './Archives.jsx';
 import { KanbanAppelsOffres, KanbanMarches } from './MarchesKanban.jsx';
+import { EtiquettesRecherche, FILTRES_MARCHES, MenuRecherche, regrouper, useFavoris } from './RechercheOdoo.jsx';
 
 export const CLE_MARCHES = ['marches'];
 
@@ -274,7 +274,11 @@ export function PageMarches() {
   // bord (« Cautions non restituées ») mène droit à la liste filtrée.
   const [phase, setPhase] = useState(() => parametres.get('phase') ?? '');
   const [clientId, setClientId] = useState(() => parametres.get('clientId') ?? '');
-  const [incomplets, setIncomplets] = useState(() => ['1', 'true'].includes(parametres.get('incomplets') ?? ''));
+  // Les filtres prêts à cocher et le regroupement, comme la recherche d'Odoo.
+  // « ?incomplets=1 » (lien du tableau de bord) coche le filtre correspondant.
+  const [filtres, setFiltres] = useState(() => new Set(['1', 'true'].includes(parametres.get('incomplets') ?? '') ? ['incomplets'] : []));
+  const [groupe, setGroupe] = useState('');
+  const [replies, setReplies] = useState(() => new Set());
   const [recherche, setRecherche] = useState('');
   const [tri, setTri] = useState({ colonne: 'reference', sens: 1 });
   const [coches, setCoches] = useState(() => new Set());
@@ -301,6 +305,29 @@ export function PageMarches() {
   const typeParCode = new Map((referentiels.data?.types ?? []).map((t) => [t.code, t.id]));
   const peutVerser = droits.can('verser', 'Document');
   const peutArchiver = droits.can('archiver', 'Marche');
+  const { utilisateur } = useSession();
+  const { favoris, enregistrer, retirer } = useFavoris(`icity.marches.favoris.${utilisateur.id}`);
+
+  function basculerFiltre(cle) {
+    setFiltres((avant) => {
+      const apres = new Set(avant);
+      if (apres.has(cle)) apres.delete(cle);
+      else apres.add(cle);
+      return apres;
+    });
+  }
+
+  /** Une recherche enregistrée : tout ce qui la décrit, pour la rappeler telle quelle. */
+  const etatRecherche = () => ({ recherche, phase, clientId, filtres: [...filtres], groupe, vue });
+  function appliquerFavori(f) {
+    setRecherche(f.recherche ?? '');
+    setPhase(f.phase ?? '');
+    setClientId(f.clientId ?? '');
+    setFiltres(new Set(f.filtres ?? []));
+    setGroupe(f.groupe ?? '');
+    if (f.vue) setVue(f.vue);
+    setReplies(new Set());
+  }
   const archivage = useArchivage();
   const typeAttestation = (referentiels.data?.types ?? []).find((t) => t.code === 'ATT');
 
@@ -326,7 +353,7 @@ export function PageMarches() {
     if (q) liste = liste.filter((m) => `${m.reference} ${m.objet ?? ''} ${m.client?.nom ?? ''} ${m.ville ?? ''}`.toLowerCase().includes(q));
     if (phase) liste = liste.filter((m) => m.phase === phase);
     if (clientId) liste = liste.filter((m) => String(m.client?.id) === clientId);
-    if (incomplets) liste = liste.filter((m) => m.manquantes.length > 0);
+    for (const f of FILTRES_MARCHES) if (filtres.has(f.cle)) liste = liste.filter((m) => f.test(m, utilisateur.id));
 
     const valeur = {
       reference: (m) => m.reference,
@@ -341,7 +368,60 @@ export function PageMarches() {
       const c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), 'fr', { numeric: true });
       return c * tri.sens;
     });
-  }, [gagnes, recherche, phase, clientId, incomplets, tri]);
+  }, [gagnes, recherche, phase, clientId, filtres, utilisateur.id, tri]);
+
+  // Les groupes de la liste, quand on regroupe (la vue Kanban regroupe déjà par phase).
+  const groupes = useMemo(() => (groupe ? regrouper(visibles, groupe) : null), [visibles, groupe]);
+
+  /*
+   * Toute la ligne ouvre le marché : c'est le geste attendu d'un tableau,
+   * plutôt que de viser la seule référence. Les cases de pièces gardent leur
+   * propre lien — un clic sur un ✓ mène au document, pas au marché.
+   */
+  const ligneMarche = (m) => (
+                  <tr
+                    key={m.id}
+                    onClick={() => aller(`/marches/${m.id}`)}
+                    className="cursor-pointer border-b border-trait last:border-0 hover:bg-surface-2"
+                  >
+                    {selection && <CaseLigne libelle={`Cocher ${m.reference}`} checked={coches.has(m.id)} onChange={() => selection.basculer(m.id)} />}
+                    <td className="px-3 py-2.5">
+                      <Link
+                        to={`/marches/${m.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="chiffres font-medium text-cyan-texte hover:underline"
+                      >
+                        {m.reference}
+                      </Link>
+                      {m.lot && <span className="ml-1.5 text-[12.5px] text-encre-3">lot {m.lot}</span>}
+                    </td>
+                    <td className="max-w-44 truncate px-3 py-2.5 text-encre-2" title={m.client?.nom}>
+                      {m.client?.nom ?? '—'}
+                    </td>
+                    <td className="max-w-64 truncate px-3 py-2.5 text-encre-2" title={m.objet ?? m.objetTechnique ?? ''}>
+                      {m.objet ?? m.objetTechnique ?? <span className="text-encre-3">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <BadgeEtatMarche marche={m} />
+                    </td>
+                    <td className={cx('chiffres px-3 py-2.5 text-[13px]', m.etatEcheance === 'depassee' && 'font-semibold text-alerte', m.etatEcheance === 'proche' && 'font-semibold text-attente')}>
+                      {m.echeance ? dateCourte(m.echeance) : <span className="text-encre-3">—</span>}
+                    </td>
+                    {PIECES_CYCLE.map((p) => (
+                      <CasePiece
+                        key={p.cle}
+                        piece={p}
+                        typeId={typeParCode.get(p.code)}
+                        documentId={m.pieces[p.cle] ?? null}
+                        manquante={m.manquantes.includes(p.cle)}
+                        marche={m}
+                        peutVerser={peutVerser}
+                        surVerse={apresVersement}
+                      />
+                    ))}
+                    <td className="chiffres px-3 py-2.5 text-right text-encre-2">{m.nbDocuments}</td>
+                  </tr>
+  );
 
   function Colonne({ id, children, className }) {
     const actif = tri.colonne === id;
@@ -417,12 +497,12 @@ export function PageMarches() {
                   taille="petit"
                   icone={Download}
                   onClick={() => {
-                    const filtres = new URLSearchParams({ nature: 'marches' });
-                    if (phase) filtres.set('phase', phase);
-                    if (clientId) filtres.set('clientId', clientId);
-                    if (incomplets) filtres.set('incomplets', 'true');
-                    if (recherche.trim()) filtres.set('q', recherche.trim());
-                    window.location.href = `/api/marches/export.csv?${filtres}`;
+                    const requete = new URLSearchParams({ nature: 'marches' });
+                    if (phase) requete.set('phase', phase);
+                    if (clientId) requete.set('clientId', clientId);
+                    if (filtres.has('incomplets')) requete.set('incomplets', 'true');
+                    if (recherche.trim()) requete.set('q', recherche.trim());
+                    window.location.href = `/api/marches/export.csv?${requete}`;
                   }}
                 >
                   Exporter
@@ -525,7 +605,20 @@ export function PageMarches() {
             </option>
           ))}
         </select>
-        <CaseACocher libelle="Incomplets seulement" checked={incomplets} onChange={(e) => setIncomplets(e.target.checked)} />
+        <MenuRecherche
+          filtres={filtres}
+          basculerFiltre={basculerFiltre}
+          groupe={groupe}
+          setGroupe={(g) => {
+            setGroupe(g);
+            setReplies(new Set());
+          }}
+          favoris={favoris}
+          appliquerFavori={appliquerFavori}
+          enregistrerFavori={(nom) => enregistrer(nom, etatRecherche())}
+          retirerFavori={retirer}
+        />
+        <EtiquettesRecherche filtres={filtres} basculerFiltre={basculerFiltre} groupe={groupe} setGroupe={setGroupe} />
       </Carte>
 
       {vue === 'kanban' && !marches.isPending ? (
@@ -562,56 +655,38 @@ export function PageMarches() {
                 </tr>
               </thead>
               <tbody>
-                {visibles.map((m) => (
-                  /*
-                   * Toute la ligne ouvre le marché : c'est le geste attendu
-                   * d'un tableau, plutôt que de viser la seule référence. Les
-                   * cases de pièces gardent leur propre lien — un clic sur un
-                   * ✓ mène au document, pas au marché.
-                   */
-                  <tr
-                    key={m.id}
-                    onClick={() => aller(`/marches/${m.id}`)}
-                    className="cursor-pointer border-b border-trait last:border-0 hover:bg-surface-2"
-                  >
-                    {selection && <CaseLigne libelle={`Cocher ${m.reference}`} checked={coches.has(m.id)} onChange={() => selection.basculer(m.id)} />}
-                    <td className="px-3 py-2.5">
-                      <Link
-                        to={`/marches/${m.id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="chiffres font-medium text-cyan-texte hover:underline"
-                      >
-                        {m.reference}
-                      </Link>
-                      {m.lot && <span className="ml-1.5 text-[12.5px] text-encre-3">lot {m.lot}</span>}
-                    </td>
-                    <td className="max-w-44 truncate px-3 py-2.5 text-encre-2" title={m.client?.nom}>
-                      {m.client?.nom ?? '—'}
-                    </td>
-                    <td className="max-w-64 truncate px-3 py-2.5 text-encre-2" title={m.objet ?? m.objetTechnique ?? ''}>
-                      {m.objet ?? m.objetTechnique ?? <span className="text-encre-3">—</span>}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <BadgeEtatMarche marche={m} />
-                    </td>
-                    <td className={cx('chiffres px-3 py-2.5 text-[13px]', m.etatEcheance === 'depassee' && 'font-semibold text-alerte', m.etatEcheance === 'proche' && 'font-semibold text-attente')}>
-                      {m.echeance ? dateCourte(m.echeance) : <span className="text-encre-3">—</span>}
-                    </td>
-                    {PIECES_CYCLE.map((p) => (
-                      <CasePiece
-                        key={p.cle}
-                        piece={p}
-                        typeId={typeParCode.get(p.code)}
-                        documentId={m.pieces[p.cle] ?? null}
-                        manquante={m.manquantes.includes(p.cle)}
-                        marche={m}
-                        peutVerser={peutVerser}
-                        surVerse={apresVersement}
-                      />
-                    ))}
-                    <td className="chiffres px-3 py-2.5 text-right text-encre-2">{m.nbDocuments}</td>
-                  </tr>
-                ))}
+                {groupes
+                  ? groupes.map((g) => {
+                      const replie = replies.has(g.libelle);
+                      return (
+                        <Fragment key={g.libelle}>
+                          <tr className="border-b border-trait bg-surface-2">
+                            <td colSpan={(selection ? 1 : 0) + 6 + PIECES_CYCLE.length} className="px-3 py-2">
+                              <button
+                                type="button"
+                                aria-expanded={!replie}
+                                onClick={() =>
+                                  setReplies((avant) => {
+                                    const apres = new Set(avant);
+                                    if (apres.has(g.libelle)) apres.delete(g.libelle);
+                                    else apres.add(g.libelle);
+                                    return apres;
+                                  })
+                                }
+                                className="inline-flex items-center gap-2 text-[14px] font-semibold"
+                              >
+                                <ChevronRight className={cx('size-4 text-encre-3 transition-transform', !replie && 'rotate-90')} aria-hidden />
+                                {g.libelle}
+                                <span className="chiffres font-normal text-encre-3">({g.marches.length})</span>
+                                {g.montant > 0 && <span className="chiffres font-normal text-encre-3">· {montant(g.montant)}</span>}
+                              </button>
+                            </td>
+                          </tr>
+                          {!replie && g.marches.map(ligneMarche)}
+                        </Fragment>
+                      );
+                    })
+                  : visibles.map(ligneMarche)}
               </tbody>
             </table>
           </div>
