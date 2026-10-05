@@ -8,7 +8,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarClock, ChevronLeft, ChevronRight, CreditCard, Flag, ListTodo, Truck } from 'lucide-react';
+import { CalendarClock, ChevronLeft, ChevronRight, CreditCard, Flag, GanttChart, ListTodo, Truck } from 'lucide-react';
 import { jourCasablanca } from '@icity/commun/activites';
 import { api } from '../api.js';
 import { montant } from '../format.js';
@@ -21,6 +21,7 @@ import { cx } from '../ui/cx.js';
 const TYPES = {
   echeance: { libelle: 'Échéances des marchés', Icone: Flag, classe: 'bg-cyan-voile text-cyan-texte' },
   activite: { libelle: 'Activités', Icone: ListTodo, classe: 'bg-attente-voile text-attente' },
+  tache: { libelle: 'Étapes de chantier', Icone: GanttChart, classe: 'bg-surface-2 text-encre-2 border border-trait' },
   livraison: { libelle: 'Livraisons attendues', Icone: Truck, classe: 'bg-ok-voile text-ok' },
   paiement: { libelle: 'Paiements', Icone: CreditCard, classe: 'bg-[color-mix(in_oklab,var(--bordeaux),transparent_88%)] text-bordeaux' },
 };

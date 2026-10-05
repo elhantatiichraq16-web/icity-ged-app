@@ -151,7 +151,7 @@ function elementJournal(l, noms, pieces) {
     pieceId: piece?.id ?? null,
     changements,
     commentaire:
-      l.action.startsWith('circuit.') || l.action.startsWith('activite.') || ['achats.import', 'fournisseur.fusionne', 'commande.bon_genere', 'commande.envoyee', 'commande.piece_versee'].includes(l.action)
+      l.action.startsWith('circuit.') || l.action.startsWith('activite.') || l.action.startsWith('tache.') || ['achats.import', 'fournisseur.fusionne', 'commande.bon_genere', 'commande.envoyee', 'commande.piece_versee'].includes(l.action)
         ? l.commentaire
         : null,
   };

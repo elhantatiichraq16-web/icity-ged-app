@@ -4,7 +4,7 @@
  * Documents / Échanges / Journal / Informations.
  */
 import { lazy, Suspense, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Archive, ArchiveRestore, ArrowLeft, Building2, Check, Copy, ChevronRight, FileText, Mail, ShoppingCart, Upload, X } from 'lucide-react';
 import { CONSERVATIONS, ORDRE_PHASES, PHASES, PIECES_CYCLE, STATUTS_AFFAIRE } from '@icity/commun/marches';
@@ -20,6 +20,7 @@ import { Confirmation, Modale } from '../ui/Modale.jsx';
 import { useToasts } from '../ui/Toasts.jsx';
 import { useArchivage } from './Archives.jsx';
 import { allerAuFil, BoutonRaccourci, FilActivite } from './FilActivite.jsx';
+import { OngletPlanning } from './PlanningMarche.jsx';
 import { ETATS_OCR } from './Documents.jsx';
 import { BadgeEtatMarche, CLE_MARCHES } from './Marches.jsx';
 
@@ -31,12 +32,16 @@ const AchatsDuMarche = lazy(() => import('./Achats.jsx').then((m) => ({ default:
 const ONGLETS = [
   { cle: 'documents', libelle: 'Documents' },
   { cle: 'achats', libelle: 'Achats' },
+  // Les étapes du chantier sur un Gantt, comme le module Projet d'Odoo.
+  { cle: 'planning', libelle: 'Planning' },
   { cle: 'informations', libelle: 'Informations' },
 ];
 
 export function PageFicheMarche() {
   const { id } = useParams();
-  const [onglet, setOnglet] = useState('documents');
+  // L'onglet de départ peut venir de l'adresse (le calendrier mène au planning).
+  const [parametres] = useSearchParams();
+  const [onglet, setOnglet] = useState(() => (ONGLETS.some((o) => o.cle === parametres.get('onglet')) ? parametres.get('onglet') : 'documents'));
   const { droits } = useSession();
   const marche = useQuery({ queryKey: ['marche', id], queryFn: () => api(`/api/marches/${id}`) });
 
@@ -111,6 +116,7 @@ export function PageFicheMarche() {
           <AchatsDuMarche marcheId={m.id} />
         </Suspense>
       )}
+      {onglet === 'planning' && <OngletPlanning m={m} />}
       {onglet === 'informations' && <OngletInformations m={m} />}
 
       <FilActivite type="marche" id={m.id} className="mt-6" />

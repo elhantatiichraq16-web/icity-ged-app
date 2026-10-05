@@ -6,6 +6,10 @@
 /** Ce que dit chaque action, en clair. `{piece}` est remplacé par le titre de la pièce. */
 export const PHRASES = {
   'marche.cree': 'a créé l’affaire',
+  'tache.creee': 'a ajouté une étape au planning',
+  'tache.modifiee': 'a mis à jour une étape du planning',
+  'tache.terminee': 'a terminé une étape du planning',
+  'tache.supprimee': 'a retiré une étape du planning',
   'marche.modifie': 'a modifié la fiche',
   'marche.archive': 'a archivé le marché',
   'marche.desarchive': 'a désarchivé le marché',

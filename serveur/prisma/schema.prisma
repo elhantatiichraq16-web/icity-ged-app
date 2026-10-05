@@ -71,6 +71,7 @@ model Utilisateur {
   activitesAssignees Activite[]     @relation("ActivitesAssignees")
   activitesCreees   Activite[]      @relation("ActivitesCreees")
   abonnements       Abonnement[]
+  tachesMarches     TacheMarche[]   @relation("TachesMarches")
   notifications     Notification[]  @relation("NotificationsRecues")
   notificationsEmises Notification[] @relation("NotificationsEmises")
   documentsVerses Document[]        @relation("DocumentsVerses")
@@ -281,6 +282,7 @@ model Marche {
   lignesAchat          LigneAchat[]
   commandesFournisseur CommandeFournisseur[]
   activites            Activite[]
+  taches               TacheMarche[]
 
   @@index([clientId])
   @@index([phase])
@@ -794,4 +796,26 @@ model ModeleMail {
   modifieLe DateTime @updatedAt @map("modifie_le")
 
   @@map("modeles_mails")
+}
+
+/// Une étape du chantier d'un marché, pour son planning (le module Projet
+/// d'Odoo) : installation, formation, réception…
+model TacheMarche {
+  id            Int          @id @default(autoincrement())
+  marcheId      Int          @map("marche_id")
+  marche        Marche       @relation(fields: [marcheId], references: [id], onDelete: Cascade)
+  titre         String       @db.VarChar(160)
+  debut         DateTime     @db.Date
+  fin           DateTime     @db.Date
+  responsableId Int?         @map("responsable_id")
+  responsable   Utilisateur? @relation("TachesMarches", fields: [responsableId], references: [id], onDelete: SetNull)
+  /// De 0 à 100.
+  avancement    Int          @default(0)
+  ordre         Int          @default(0)
+  notes         String?      @db.Text
+  creeLe        DateTime     @default(now()) @map("cree_le")
+  modifieLe     DateTime     @updatedAt @map("modifie_le")
+
+  @@index([marcheId])
+  @@map("taches_marches")
 }

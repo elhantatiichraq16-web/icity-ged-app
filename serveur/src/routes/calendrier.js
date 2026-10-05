@@ -72,6 +72,23 @@ export default async function routesCalendrier(app) {
       });
     }
 
+    // ── Les étapes du planning des marchés, à leur date de fin ──
+    const taches = await db.tacheMarche.findMany({
+      where: { fin: entre, avancement: { lt: 100 }, marche: EN_COURS },
+      include: { marche: { select: { id: true, reference: true } }, responsable: { select: { nom: true } } },
+    });
+    for (const t of taches) {
+      evenements.push({
+        id: `t${t.id}`,
+        type: 'tache',
+        date: jour(t.fin),
+        titre: `${t.marche.reference} : ${t.titre}`,
+        detail: [t.responsable?.nom, `${t.avancement} %`].filter(Boolean).join(' · '),
+        lien: `/marches/${t.marche.id}?onglet=planning`,
+        alerte: jour(t.fin) < new Date().toISOString().slice(0, 10),
+      });
+    }
+
     // ── Les livraisons attendues ──
     if (requete.droits.can('lire', 'Achat')) {
       const prix = requete.droits.can('lire', 'PrixAchat');
