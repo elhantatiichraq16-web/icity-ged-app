@@ -12,7 +12,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, ArrowDown, ArrowRight, ArrowUp, Check, Download, LoaderCircle, Minus, Plus, Search, Upload, X } from 'lucide-react';
+import { Archive, ArrowDown, ArrowRight, ArrowUp, Check, Columns3, LayoutList, Download, LoaderCircle, Minus, Plus, Search, Upload, X } from 'lucide-react';
 import { ORDRE_PHASES, PHASES, PIECES_CYCLE, STATUTS_APPEL_OFFRES } from '@icity/commun/marches';
 import { api } from '../api.js';
 import { dateCourte } from '../format.js';
@@ -24,6 +24,7 @@ import { useToasts } from '../ui/Toasts.jsx';
 import { Confirmation } from '../ui/Modale.jsx';
 import { useSession } from '../auth/session.jsx';
 import { CaseLigne, RappelArchives, useArchivage } from './Archives.jsx';
+import { KanbanAppelsOffres, KanbanMarches } from './MarchesKanban.jsx';
 
 export const CLE_MARCHES = ['marches'];
 
@@ -254,6 +255,17 @@ function CasePiece({ documentId, manquante, piece, typeId, marche, surVerse, peu
   );
 }
 
+const CLE_VUE = 'icity.marches.vue';
+
+/** La vue choisie (liste ou Kanban), retenue sur ce poste : un confort. */
+function vueRetenue() {
+  try {
+    return localStorage.getItem(CLE_VUE) === 'kanban' ? 'kanban' : 'liste';
+  } catch {
+    return 'liste';
+  }
+}
+
 export function PageMarches() {
   // L'onglet dans l'URL : le tableau de bord peut mener droit aux appels d'offres.
   const [parametres, setParametres] = useSearchParams();
@@ -266,6 +278,15 @@ export function PageMarches() {
   const [recherche, setRecherche] = useState('');
   const [tri, setTri] = useState({ colonne: 'reference', sens: 1 });
   const [coches, setCoches] = useState(() => new Set());
+  const [vue, setVueEtat] = useState(vueRetenue);
+  function setVue(v) {
+    setVueEtat(v);
+    try {
+      localStorage.setItem(CLE_VUE, v);
+    } catch {
+      // Navigation privée : la vue sera oubliée, rien de plus.
+    }
+  }
   const [confirmerArchivage, setConfirmerArchivage] = useState(false);
 
   const aller = useNavigate();
@@ -440,6 +461,27 @@ export function PageMarches() {
             <span className={cx('chiffres rounded-full px-2 text-[12.5px]', onglet === cle ? 'bg-cyan-voile text-cyan-texte' : 'bg-surface-2')}>{n}</span>
           </button>
         ))}
+
+        {/* Liste ou Kanban, comme les vues d'Odoo. */}
+        <div role="group" aria-label="Affichage" className="ml-auto mb-1.5 inline-flex rounded-[10px] border border-trait bg-surface p-0.5">
+          {[
+            ['liste', 'Liste', LayoutList],
+            ['kanban', 'Kanban', Columns3],
+          ].map(([code, libelle, Icone]) => (
+            <button
+              key={code}
+              type="button"
+              aria-pressed={vue === code}
+              onClick={() => setVue(code)}
+              className={cx(
+                'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[13px] font-medium transition-colors',
+                vue === code ? 'bg-cyan-voile text-cyan-texte' : 'text-encre-2 hover:bg-surface-2 hover:text-encre',
+              )}
+            >
+              <Icone className="size-4" aria-hidden /> {libelle}
+            </button>
+          ))}
+        </div>
       </div>
 
       {onglet === 'ao' ? (
@@ -448,7 +490,11 @@ export function PageMarches() {
             <SqueletteLignes lignes={3} />
           </Carte>
         ) : (
-          <TableauAppelsOffres appels={appels} peutModifier={droits.can('modifier', 'Marche')} selection={selection} />
+          vue === 'kanban' ? (
+            <KanbanAppelsOffres appels={appels} peutModifier={droits.can('modifier', 'Marche')} />
+          ) : (
+            <TableauAppelsOffres appels={appels} peutModifier={droits.can('modifier', 'Marche')} selection={selection} />
+          )
         )
       ) : (
       <>
@@ -482,6 +528,10 @@ export function PageMarches() {
         <CaseACocher libelle="Incomplets seulement" checked={incomplets} onChange={(e) => setIncomplets(e.target.checked)} />
       </Carte>
 
+      {vue === 'kanban' && !marches.isPending ? (
+        <KanbanMarches marches={visibles} />
+      ) : (
+      <>
       <Carte>
         {marches.isPending ? (
           <div className="p-5">
@@ -573,6 +623,8 @@ export function PageMarches() {
         <X className="inline size-3.5 text-alerte" aria-hidden /> manquante à ce stade ·{' '}
         <Minus className="inline size-3 text-encre-3" aria-hidden /> pas encore attendue
       </p>
+      </>
+      )}
 
       {enAttente > 0 && typeAttestation && (
         <p className="mt-4 flex flex-wrap items-center gap-x-2 rounded-[10px] border border-trait bg-surface-2 px-4 py-3 text-[13.5px] text-encre-2">
