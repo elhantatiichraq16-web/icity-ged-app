@@ -258,9 +258,11 @@ export function PageMarches() {
   // L'onglet dans l'URL : le tableau de bord peut mener droit aux appels d'offres.
   const [parametres, setParametres] = useSearchParams();
   const onglet = parametres.get('onglet') === 'ao' ? 'ao' : 'marches';
-  const [phase, setPhase] = useState('');
-  const [clientId, setClientId] = useState('');
-  const [incomplets, setIncomplets] = useState(false);
+  // Les filtres de départ se lisent dans l'adresse : une tuile du tableau de
+  // bord (« Cautions non restituées ») mène droit à la liste filtrée.
+  const [phase, setPhase] = useState(() => parametres.get('phase') ?? '');
+  const [clientId, setClientId] = useState(() => parametres.get('clientId') ?? '');
+  const [incomplets, setIncomplets] = useState(() => ['1', 'true'].includes(parametres.get('incomplets') ?? ''));
   const [recherche, setRecherche] = useState('');
   const [tri, setTri] = useState({ colonne: 'reference', sens: 1 });
   const [coches, setCoches] = useState(() => new Set());

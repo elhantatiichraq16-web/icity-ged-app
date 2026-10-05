@@ -15,11 +15,73 @@ import { codesParMarche, piecesParMarche } from '../services/phase-marche.js';
 
 const nombre = (v) => (typeof v === 'bigint' ? Number(v) : (v ?? 0));
 
+/** Les périodes du tableau de bord, comme le filtre de dates d'Odoo. */
+export const PERIODES = {
+  mois: { libelle: 'Ce mois', precedente: 'le mois précédent' },
+  trimestre: { libelle: 'Ce trimestre', precedente: 'le trimestre précédent' },
+  annee: { libelle: 'Cette année', precedente: 'l’année précédente' },
+  tout: { libelle: 'Depuis le début', precedente: null },
+};
+
+/**
+ * Les bornes d'une période : son début, et la période précédente entière
+ * pour comparer (« +3 par rapport au mois précédent »).
+ *
+ * @param {keyof PERIODES} periode
+ * @param {Date} maintenant
+ */
+export function bornesPeriode(periode, maintenant = new Date()) {
+  const a = maintenant.getFullYear();
+  const m = maintenant.getMonth();
+  if (periode === 'tout') return { debut: null, debutPrecedente: null };
+  if (periode === 'annee') return { debut: new Date(a, 0, 1), debutPrecedente: new Date(a - 1, 0, 1) };
+  if (periode === 'trimestre') {
+    const t = Math.floor(m / 3) * 3;
+    return { debut: new Date(a, t, 1), debutPrecedente: new Date(a, t - 3, 1) };
+  }
+  return { debut: new Date(a, m, 1), debutPrecedente: new Date(a, m - 1, 1) };
+}
+
+/**
+ * Ce qui s'est passé pendant la période, et pendant la précédente : les
+ * nouvelles affaires, leur montant, les pièces versées, les activités faites.
+ */
+async function chiffresPeriode(periode, filtreDocuments) {
+  const { debut, debutPrecedente } = bornesPeriode(periode);
+  const entre = (de, a) => (de ? { gte: de, ...(a ? { lt: a } : {}) } : undefined);
+
+  async function mesurer(de, a) {
+    const creeLe = entre(de, a);
+    const [marches, montant, pieces, activites] = await Promise.all([
+      db.marche.count({ where: { ...EN_COURS, ...(creeLe ? { creeLe } : {}) } }),
+      db.marche.aggregate({ where: { ...EN_COURS, ...(creeLe ? { creeLe } : {}) }, _sum: { montantTtc: true } }),
+      db.document.count({ where: { ...filtreDocuments, ...(creeLe ? { creeLe } : {}) } }),
+      db.activite.count({ where: { faiteLe: creeLe ?? { not: null } } }),
+    ]);
+    return { marches, montant: montant._sum.montantTtc ? Number(montant._sum.montantTtc) : 0, pieces, activites };
+  }
+
+  const [actuel, precedent] = await Promise.all([mesurer(debut, null), debutPrecedente ? mesurer(debutPrecedente, debut) : null]);
+  return {
+    code: periode,
+    libelle: PERIODES[periode].libelle,
+    precedente: PERIODES[periode].precedente,
+    debut: debut?.toISOString().slice(0, 10) ?? null,
+    indicateurs: [
+      { cle: 'marches', libelle: 'Nouvelles affaires', valeur: actuel.marches, precedent: precedent?.marches ?? null, vers: '/marches' },
+      { cle: 'montant', libelle: 'Montant des nouvelles affaires', valeur: actuel.montant, precedent: precedent?.montant ?? null, monnaie: true, vers: '/marches' },
+      { cle: 'pieces', libelle: 'Pièces versées', valeur: actuel.pieces, precedent: precedent?.pieces ?? null, vers: '/documents' },
+      { cle: 'activites', libelle: 'Activités faites', valeur: actuel.activites, precedent: precedent?.activites ?? null, vers: null },
+    ],
+  };
+}
+
 /** @param {import('fastify').FastifyInstance} app */
 export default async function routesTableauBord(app) {
   app.addHook('preHandler', exigerConnexion);
 
   app.get('/api/tableau-bord', async (requete) => {
+    const periode = Object.hasOwn(PERIODES, requete.query.periode ?? '') ? requete.query.periode : 'mois';
     const visibles = confidentialitesVisibles(requete.utilisateur.role.code);
     // Le tableau de bord parle de l'activité en cours : les marchés archivés
     // et leurs pièces n'y comptent plus (ils restent dans « Archives »).
@@ -96,6 +158,7 @@ export default async function routesTableauBord(app) {
     for (const m of vus) parClient.set(m.clientId ?? null, (parClient.get(m.clientId ?? null) ?? 0) + 1);
 
     return {
+      periode: await chiffresPeriode(periode, filtreDocuments),
       tuiles: {
         marchesTotal: vus.length,
         appelsOffres: appelsOffres.length,

@@ -4,7 +4,7 @@
  * Les chiffres viennent du serveur, tels quels : l'écran ne recalcule rien.
  * Il se rafraîchit tout seul toutes les 60 secondes.
  */
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { ArcElement, BarElement, CategoryScale, Chart, LinearScale, LineElement, PointElement, Tooltip } from 'chart.js';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
@@ -12,7 +12,7 @@ import { AlertTriangle, ArrowRight, FileText, FolderKanban, Layers, Mail, Shield
 import { ORDRE_PHASES, PHASES } from '@icity/commun/marches';
 import { api } from '../api.js';
 import { useSession } from '../auth/session.jsx';
-import { depuis } from '../format.js';
+import { depuis, montant } from '../format.js';
 import { Alerte, Carte, EnTetePage, EtatVide, SqueletteLignes } from '../ui/Elements.jsx';
 import { MesActivites } from './Activites.jsx';
 import { RappelArchives } from './Archives.jsx';
@@ -50,9 +50,25 @@ const OPTIONS = (c) => ({
 /** La date du jour, en tête de page : « lundi 5 octobre 2026 ». */
 const aujourdhui = () => new Intl.DateTimeFormat('fr-FR', { dateStyle: 'full', timeZone: 'Africa/Casablanca' }).format(new Date());
 
+/** Les périodes proposées, comme le filtre de dates d'Odoo. */
+const PERIODES = [
+  ['mois', 'Ce mois'],
+  ['trimestre', 'Ce trimestre'],
+  ['annee', 'Cette année'],
+  ['tout', 'Depuis le début'],
+];
+
 export function PageTableauDeBord() {
   const { utilisateur } = useSession();
-  const donnees = useQuery({ queryKey: ['tableau-bord'], queryFn: () => api('/api/tableau-bord'), refetchInterval: 60_000 });
+  // La période dans l'adresse : elle survit au rechargement et se partage.
+  const [parametres, setParametres] = useSearchParams();
+  const periode = PERIODES.some(([c]) => c === parametres.get('periode')) ? parametres.get('periode') : 'mois';
+  const donnees = useQuery({
+    queryKey: ['tableau-bord', periode],
+    queryFn: () => api(`/api/tableau-bord?periode=${periode}`),
+    refetchInterval: 60_000,
+    placeholderData: (precedentes) => precedentes,
+  });
 
   if (donnees.isPending) {
     return (
@@ -77,9 +93,30 @@ export function PageTableauDeBord() {
         surtitre={aujourdhui()}
         titre={`Bonjour, ${prenom}`}
         description="L’état du fonds : les affaires, ce qui manque à leurs dossiers, et ce qui demande votre attention."
+        actions={
+          <div role="group" aria-label="Période" className="inline-flex rounded-[10px] border border-trait bg-surface p-0.5">
+            {PERIODES.map(([code, libelle]) => (
+              <button
+                key={code}
+                type="button"
+                aria-pressed={periode === code}
+                onClick={() => setParametres(code === 'mois' ? {} : { periode: code }, { replace: true })}
+                className={cx(
+                  'rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors',
+                  periode === code ? 'bg-cyan-voile text-cyan-texte' : 'text-encre-2 hover:bg-surface-2 hover:text-encre',
+                )}
+              >
+                {libelle}
+              </button>
+            ))}
+          </div>
+        }
       />
 
-      {/* ── Tuiles ── */}
+      {/* ── La période : ce qui s'est passé, comparé à la précédente ── */}
+      <IndicateursPeriode periode={donnees.data.periode} />
+
+      {/* ── Tuiles : l'état du fonds aujourd'hui ── */}
       <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Tuile
           icone={FolderKanban}
@@ -94,7 +131,7 @@ export function PageTableauDeBord() {
           chiffre={tuiles.incomplets}
           note="des pièces manquent à l’étape franchie"
           ton={tuiles.incomplets ? 'attente' : 'ok'}
-          vers="/marches"
+          vers="/marches?incomplets=1"
         />
         <Tuile
           icone={ShieldAlert}
@@ -246,7 +283,10 @@ export function PageTableauDeBord() {
             <ul className="grid gap-2">
               {ORDRE_PHASES.map((p) => (
                 <li key={p} className="flex items-center gap-3">
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-encre-2">{PHASES[p].nom}</span>
+                  {/* Chaque phase mène à la liste filtrée, comme un graphique d'Odoo. */}
+                  <Link to={`/marches?phase=${p}`} className="min-w-0 flex-1 truncate text-[13px] text-encre-2 hover:text-cyan-texte hover:underline">
+                    {PHASES[p].nom}
+                  </Link>
                   <span className="h-1.5 w-24 overflow-hidden rounded-full bg-trait">
                     <span
                       className="block h-full rounded-full bg-cyan"
@@ -287,6 +327,50 @@ export function PageTableauDeBord() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Les chiffres de la période, avec l'écart à la période précédente (▲ +3),
+ * comme les indicateurs d'Odoo. Chaque carte mène à la liste concernée.
+ */
+function IndicateursPeriode({ periode }) {
+  if (!periode) return null;
+  return (
+    <section aria-label={`Chiffres : ${periode.libelle.toLowerCase()}`} className="mb-5">
+      <h2 className="mb-2 font-sans text-[13px] font-semibold tracking-[0.06em] text-encre-3 uppercase">
+        {periode.libelle}
+        {periode.debut && <span className="font-normal tracking-normal normal-case"> · depuis le {new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' }).format(new Date(`${periode.debut}T12:00:00`))}</span>}
+      </h2>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {periode.indicateurs.map((i) => {
+          const ecart = i.precedent === null ? null : i.valeur - i.precedent;
+          const valeur = i.monnaie ? (i.valeur ? montant(i.valeur) : '—') : i.valeur;
+          const carte = (
+            <Carte as="div" className="h-full px-4 py-3 transition-[box-shadow,border-color] duration-200 hover:border-trait-fort">
+              <p className="text-[13px] text-encre-2">{i.libelle}</p>
+              <p className="chiffres mt-0.5 text-[22px] leading-tight font-semibold">{valeur}</p>
+              {ecart !== null && (
+                <p className="mt-0.5 text-[13px]">
+                  <span className={cx('font-semibold', ecart > 0 ? 'text-ok' : ecart < 0 ? 'text-alerte-texte' : 'text-encre-3')}>
+                    {ecart > 0 ? '▲ +' : ecart < 0 ? '▼ ' : '= '}
+                    {i.monnaie ? (ecart ? montant(ecart) : '0') : ecart}
+                  </span>
+                  <span className="text-encre-3"> par rapport à {periode.precedente}</span>
+                </p>
+              )}
+            </Carte>
+          );
+          return i.vers ? (
+            <Link key={i.cle} to={i.vers}>
+              {carte}
+            </Link>
+          ) : (
+            <div key={i.cle}>{carte}</div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
