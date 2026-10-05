@@ -11,6 +11,7 @@
 import {
   alertesLigne,
   CODES_STATUT_ACHAT,
+  controleFacture,
   etapeCommande,
   fournisseurDuNom,
   marge,
@@ -124,6 +125,8 @@ function vueCommande(c) {
     notes: c.notes,
     dateCommande: jour(c.dateCommande),
     lignes: (c.lignes ?? []).map((l) => ({ id: l.id, numero: l.numero, designation: l.designation, statut: l.statut })),
+    // Le contrôle de la facture : commandé, reçu, facturé (comme Odoo).
+    controle: controleFacture({ montantTtc: calcul.montantTtc, dateFacture: calcul.dateFacture, lignes: (c.lignes ?? []).map((l) => ({ quantite: nombre(l.quantite), puAchat: nombre(l.puAchat), statut: l.statut })) }),
     // L'étape du Kanban : déduite des dates et des lignes, jamais saisie.
     etape: etapeCommande({ soldePayeLe: calcul.soldePayeLe, dateFacture: calcul.dateFacture, dateCommande: jour(c.dateCommande), lignes: c.lignes }),
     ...paiementCommande(calcul),
@@ -488,7 +491,7 @@ export default async function routesAchats(app) {
   const INCLURE_COMMANDE = {
     marche: { select: { id: true, reference: true, objet: true } },
     fournisseur: { select: { id: true, nom: true } },
-    lignes: { select: { id: true, numero: true, designation: true, statut: true }, orderBy: { ordre: 'asc' } },
+    lignes: { select: { id: true, numero: true, designation: true, statut: true, quantite: true, puAchat: true }, orderBy: { ordre: 'asc' } },
   };
 
   app.get('/api/commandes-fournisseur', { preHandler: exiger('lire', 'PrixAchat') }, async (requete) => {

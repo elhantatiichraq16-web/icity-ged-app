@@ -906,6 +906,7 @@ function KanbanCommandes({ liste, gerer, surModifier }) {
                         <Badge ton={ETATS_PAIEMENT[c.etat].ton}>{ETATS_PAIEMENT[c.etat].nom}</Badge>
                         {/* Facturée ou payée avant d'être reçue : on attend encore le matériel. */}
                         {['facturee', 'payee'].includes(c.etape) && c.lignes.some((l) => l.statut !== 'livre') && <Badge ton="alerte">À livrer</Badge>}
+                        {c.controle?.alertes.some((a) => a.code !== 'prix_manquant') && <Badge ton="alerte">Facture à vérifier</Badge>}
                         {c.echeance && c.etat !== 'soldee' && (
                           <span className={cx('inline-flex items-center gap-1 text-[12.5px]', c.echeance < aujourdhui() ? 'font-semibold text-alerte-texte' : 'text-encre-3')}>
                             <CalendarClock className="size-3.5" aria-hidden /> {dateFr(c.echeance)}

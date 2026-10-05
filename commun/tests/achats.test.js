@@ -310,3 +310,41 @@ describe('étape d’une commande (Kanban)', () => {
     expect(etapeCommande({ lignes: [] })).toBe('preparee');
   });
 });
+
+describe('contrôle de la facture (trois montants, comme Odoo)', () => {
+  it('un montant sans facture datée est le montant convenu : comparé aux lignes, jamais « facturé avant réception »', async () => {
+    const { controleFacture } = await import('../src/achats.js');
+    const r = controleFacture({ montantTtc: 2500, lignes: [{ quantite: 1, puAchat: 2500, statut: 'commande_envoyee' }] });
+    expect(r.facture).toBeNull();
+    expect(r.alertes.map((a) => a.code)).toEqual(['ecart_montant']);
+    expect(r.alertes[0].texte).toMatch(/^Montant convenu de 2\s?500 DH pour 3\s?000 DH de lignes : il est inférieur aux lignes de 500 DH/u);
+  });
+
+  const lignes = [
+    { quantite: 2, puAchat: 1000, statut: 'livre' },
+    { quantite: 1, puAchat: 500, statut: 'commande_envoyee' },
+  ];
+
+  it('rien à dire quand facture, commande et réception concordent', async () => {
+    const { controleFacture } = await import('../src/achats.js');
+    const tout = lignes.map((l) => ({ ...l, statut: 'livre' }));
+    expect(controleFacture({ montantTtc: 3000, dateFacture: '2026-10-01', lignes: tout })).toEqual({ commande: 3000, recu: 3000, facture: 3000, alertes: [] });
+  });
+
+  it('signale une facture qui dépasse la commande, et ce qui est facturé sans être reçu', async () => {
+    const { controleFacture } = await import('../src/achats.js');
+    const r = controleFacture({ montantTtc: 3300, dateFacture: '2026-10-01', lignes });
+    expect(r).toMatchObject({ commande: 3000, recu: 2400, facture: 3300 });
+    expect(r.alertes.map((a) => a.code)).toEqual(['ecart_commande', 'facture_avant_reception']);
+    expect(r.alertes[1].texte).toMatch(/900 DH de plus que le matériel reçu/);
+  });
+
+  it('sans facture, aucune alerte de montant ; sans prix, le contrôle le dit', async () => {
+    const { controleFacture } = await import('../src/achats.js');
+    expect(controleFacture({ montantTtc: null, lignes }).alertes).toEqual([]);
+    const sansPrix = controleFacture({ montantTtc: 100, dateFacture: '2026-10-01', lignes: [{ quantite: 1, puAchat: null, statut: 'livre' }] });
+    expect(sansPrix.commande).toBeNull();
+    expect(sansPrix.alertes.map((a) => a.code)).toEqual(['prix_manquant']);
+  });
+});
+

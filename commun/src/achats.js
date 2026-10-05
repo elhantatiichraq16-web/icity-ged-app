@@ -270,6 +270,57 @@ export function ecartFacture(montantTtc, montantLignesTtc) {
   return Math.abs(ecart) > Math.max(1, lignes * 0.005) ? ecart : null;
 }
 
+/**
+ * Le contrôle de la facture à trois montants, comme Odoo : ce qui a été
+ * commandé, ce qui a été reçu, ce qui est facturé — toutes taxes comprises.
+ *
+ * Un montant sans date de facture est le montant convenu (celui du classeur,
+ * ou d'un devis) : il ne fait pas « facturé ». On le compare quand même aux
+ * lignes, pour voir une commande qui ne tombe pas juste.
+ *
+ * @param {{ montantTtc?: number | null, dateFacture?: string | null, lignes: { quantite: number, puAchat: number | null, statut: string }[] }} c
+ * @returns {{ commande: number | null, recu: number | null, facture: number | null, alertes: { code: string, texte: string, ton: string }[] }}
+ */
+export function controleFacture(c) {
+  const lignes = c.lignes ?? [];
+  const commande = ttcDesLignes(lignes);
+  const livrees = lignes.filter((l) => l.statut === 'livre');
+  const recu = commande === null ? null : livrees.length ? ttcDesLignes(livrees) : 0;
+  const montant = nombre(c.montantTtc);
+  const facture = c.dateFacture ? montant : null;
+  const alertes = [];
+
+  if (lignes.some((l) => nombre(l.puAchat) === null)) {
+    alertes.push({ code: 'prix_manquant', texte: 'Des lignes n’ont pas de prix d’achat : le contrôle de la facture est incomplet.', ton: 'attente' });
+  }
+  if (facture === null && montant !== null && commande !== null) {
+    const ecart = ecartFacture(montant, commande);
+    if (ecart !== null) {
+      alertes.push({
+        code: 'ecart_montant',
+        texte: `Montant convenu de ${enDh(montant)} pour ${enDh(commande)} de lignes : ${ecart > 0 ? 'il dépasse les lignes' : 'il est inférieur aux lignes'} de ${enDh(Math.abs(ecart))}.`,
+        ton: 'attente',
+      });
+    }
+  }
+  if (facture !== null && commande !== null) {
+    const ecart = ecartFacture(facture, commande);
+    if (ecart !== null) {
+      alertes.push({
+        code: 'ecart_commande',
+        texte: `Facturé ${enDh(facture)} pour ${enDh(commande)} commandés : ${ecart > 0 ? 'la facture dépasse la commande' : 'la facture est inférieure à la commande'} de ${enDh(Math.abs(ecart))}.`,
+        ton: ecart > 0 ? 'alerte' : 'attente',
+      });
+    }
+    // Facturé plus que reçu : le solde attend la livraison (au-delà d'un dirham et d'un demi pour cent).
+    const avance = arrondi(facture - recu);
+    if (avance > Math.max(1, facture * 0.005)) {
+      alertes.push({ code: 'facture_avant_reception', texte: `Facturé ${enDh(avance)} de plus que le matériel reçu : ne payer le solde qu’à la livraison.`, ton: 'alerte' });
+    }
+  }
+  return { commande, recu, facture, alertes };
+}
+
 /** Les paiements à prévoir, par urgence : ce que les calculs de côté de la feuille « PAIEMENT » additionnaient à la main. */
 export const GROUPES_PAIEMENT = [
   { code: 'retard', nom: 'En retard', ton: 'alerte' },

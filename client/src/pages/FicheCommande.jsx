@@ -363,15 +363,38 @@ export function PageFicheCommande() {
               <dt>Total TTC</dt>
               <dd className="chiffres">{montant(c.totaux.ttc)}</dd>
             </div>
-            {c.montantTtc !== null && Math.abs(c.montantTtc - c.totaux.ttc) > 1 && (
-              <div className="mt-1 rounded-md bg-attente-voile px-2 py-1 text-[13px] text-attente">
-                Facturé : {montant(c.montantTtc)} — écart de {montant(c.montantTtc - c.totaux.ttc)} avec les lignes.
-              </div>
-            )}
           </dl>
         </Carte>
 
         <div className="grid content-start gap-5">
+          {/* Le contrôle de la facture à trois montants, comme Odoo. */}
+          <Carte className="p-5">
+            <h2 className="mb-3 font-semibold">Contrôle de la facture</h2>
+            <dl className="grid grid-cols-3 gap-2 text-center">
+              {[
+                ['Commandé', c.controle.commande],
+                ['Reçu', c.controle.recu],
+                ['Facturé', c.controle.facture],
+              ].map(([libelle, valeur]) => (
+                <div key={libelle} className="rounded-lg bg-surface-2 px-2 py-2">
+                  <dt className="text-[13px] text-encre-3">{libelle}</dt>
+                  <dd className="chiffres text-[14px] font-semibold">{valeur === null ? '—' : montant(valeur)}</dd>
+                </div>
+              ))}
+            </dl>
+            {c.controle.alertes.length === 0 ? (
+              <p className="mt-2 text-[13px] text-encre-3">{c.controle.facture === null ? 'La facture n’est pas encore arrivée.' : 'La facture concorde avec la commande et la réception.'}</p>
+            ) : (
+              <ul className="mt-2 grid gap-1.5">
+                {c.controle.alertes.map((a) => (
+                  <li key={a.code}>
+                    <Alerte ton={a.ton === 'alerte' ? 'alerte' : 'attente'}>{a.texte}</Alerte>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Carte>
+
           <Carte className="p-5">
             <h2 className="mb-3 font-semibold">Paiement</h2>
             <dl className="grid gap-1.5 text-[14px]">
