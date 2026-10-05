@@ -42,6 +42,7 @@ import { Bouton } from '../ui/Bouton.jsx';
 import { Champ, Selection, ZoneTexte } from '../ui/Champ.jsx';
 import { Alerte, Badge, Carte, EnTetePage, EtatVide, SqueletteLignes } from '../ui/Elements.jsx';
 import { Confirmation, Modale } from '../ui/Modale.jsx';
+import { ModaleExport } from '../ui/ModaleExport.jsx';
 import { useToasts } from '../ui/Toasts.jsx';
 import { cx } from '../ui/cx.js';
 import { allerAuFil, BoutonRaccourci, FilActivite } from './FilActivite.jsx';
@@ -468,6 +469,7 @@ const FILTRES = [
 export function PageClients() {
   const clients = useQuery({ queryKey: ['clients'], queryFn: () => api('/api/clients') });
   const { droits } = useSession();
+  const [exportOuvert, setExport] = useState(false);
 
   // Recherche et statut dans l'URL : en revenant d'une fiche, on retrouve
   // la liste telle qu'on l'avait laissée.
@@ -555,8 +557,8 @@ export function PageClients() {
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
               <DropdownMenu.Content align="end" sideOffset={6} className="z-50 w-60 animate-apparition rounded-xl border border-trait bg-surface p-1.5 shadow-haute">
-                <DropdownMenu.Item className={ELEMENT_MENU} onSelect={() => (window.location.href = '/api/clients/export.csv')}>
-                  <FileSpreadsheet className="size-4 text-encre-3" aria-hidden /> Tableur (CSV)
+                <DropdownMenu.Item className={ELEMENT_MENU} onSelect={() => setExport(true)}>
+                  <FileSpreadsheet className="size-4 text-encre-3" aria-hidden /> Excel ou CSV…
                 </DropdownMenu.Item>
                 <DropdownMenu.Item className={ELEMENT_MENU} onSelect={imprimer}>
                   <Printer className="size-4 text-encre-3" aria-hidden /> PDF (impression)
@@ -682,6 +684,7 @@ export function PageClients() {
       )}
 
       {peutCreer && <ModaleNouveauClient ouverte={creation} surChangement={setCreation} />}
+      <ModaleExport ouverte={exportOuvert} surChangement={setExport} chemin="/api/clients" titre="Exporter les clients" />
     </div>
   );
 }

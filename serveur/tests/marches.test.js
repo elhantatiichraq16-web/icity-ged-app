@@ -258,7 +258,8 @@ describe('API des clients', () => {
   it('exporte la liste en CSV, avec le statut en toutes lettres', async () => {
     await poser(await creerMarche('31/2016'), 'CM');
     const requete = en(app, await connecter(app, (await creerUtilisateur('lecteur')).email));
-    const r = await requete('GET', '/api/clients/export.csv');
+    // Les colonnes d'avant, choisies une à une : le choix garde l'ordre d'origine.
+    const r = await requete('GET', '/api/clients/export.csv?colonnes=domaines,nom,sigle,nbMarches,nbMarchesEnCours,nbDocuments,statut');
     expect(r.statusCode).toBe(200);
     expect(r.headers['content-type']).toMatch(/text\/csv/);
     expect(r.body).toContain('Client;Sigle;Marchés;Marchés en cours;Pièces;Statut;Domaines e-mail');
@@ -392,3 +393,34 @@ describe('dupliquer un marché', () => {
     expect((await requete('POST', `/api/marches/${m.id}/dupliquer`, { reference: '31/2016' })).statusCode).toBe(409);
   });
 });
+
+describe('export Excel', () => {
+  it('rend un vrai classeur, avec des nombres en nombres et les seules colonnes choisies', async () => {
+    const m = await creerMarche('31/2016', { montantTtc: 1250000.5, objet: '=1+1' });
+    await poser(m, 'OS');
+    const requete = en(app, await connecter(app, (await creerUtilisateur('lecteur')).email));
+
+    const colonnes = (await requete('GET', '/api/marches/export/colonnes')).json();
+    expect(colonnes.map((c) => c.cle)).toContain('montant');
+
+    const r = await requete('GET', '/api/marches/export.xlsx?nature=marches&colonnes=objet,reference,montant');
+    expect(r.statusCode).toBe(200);
+    expect(r.headers['content-type']).toMatch(/spreadsheetml/);
+    expect(r.headers['content-disposition']).toMatch(/marches-\d{4}-\d{2}-\d{2}\.xlsx/);
+
+    const { lireClasseur } = await import('../src/services/lecture-xlsx.js');
+    const [feuille] = lireClasseur(r.rawPayload);
+    expect(feuille.nom).toBe('Marchés');
+    expect([...feuille.cellules.entries()].map(([ref, c]) => `${ref}=${c.valeur}:${c.type}`)).toEqual([
+      'A1=Référence:s',
+      'B1=Objet:s',
+      'C1=Montant TTC:s',
+      'A2=31/2016:s',
+      // Une formule reste du texte : Excel ne l'exécute pas.
+      'B2==1+1:s',
+      'C2=1250000.5:n',
+    ]);
+    expect((await requete('GET', '/api/marches/export.xlsx?colonnes=inconnue')).statusCode).toBe(422);
+  });
+});
+

@@ -15,13 +15,14 @@ import {
   extraireLot,
   normaliserReference,
   OBJETS_TECHNIQUES,
+  PHASES,
   phaseDe,
   piecesManquantes,
   statutClient,
   STATUTS_AFFAIRE,
   STATUTS_CLIENT,
 } from '@icity/commun/marches';
-import { schemaClient, schemaContactClient } from '@icity/commun/schemas';
+import { schemaClient, schemaContactClient, TYPES_ORGANISMES } from '@icity/commun/schemas';
 import { db } from '../db.js';
 import { ErreurHttp, introuvable, valider } from '../erreurs.js';
 import { exiger, exigerConnexion } from '../plugins/authentification.js';
@@ -29,7 +30,7 @@ import { doublonsEnAttente } from '../services/arbitrage-doublons.js';
 import { EN_COURS, PIECES_ARCHIVEES } from '../services/archivage.js';
 import { journaliser } from '../services/journal.js';
 import { codesParMarche, piecesParMarche } from '../services/phase-marche.js';
-import { nomFichier, versCsv } from '../services/export-csv.js';
+import { enregistrerExport } from '../services/export-csv.js';
 
 /** Ce que l'écran reçoit d'un client, sans ses compteurs. */
 function vueClient(c) {
@@ -237,38 +238,53 @@ export default async function routesMarches(app) {
    * L'export suit les mêmes filtres et les mêmes droits que l'écran : on ne
    * sort jamais par ce chemin ce qu'on ne verrait pas à l'écran.
    */
-  app.get('/api/marches/export.csv', async (requete, reponse) => {
-    const marches = await listerMarches(requete);
-
-    const csv = versCsv({
-      colonnes: [
-        { cle: 'reference', titre: 'Référence' },
-        { cle: 'client', titre: 'Client' },
-        { cle: 'objet', titre: 'Objet' },
-        { cle: 'ville', titre: 'Ville' },
-        { cle: 'phase', titre: 'Phase' },
-        { cle: 'statutAffaire', titre: 'Statut' },
-        { cle: 'montant', titre: 'Montant TTC' },
-        { cle: 'documents', titre: 'Documents' },
-        { cle: 'manquantes', titre: 'Pièces manquantes' },
-      ],
-      lignes: marches.map((m) => ({
-        reference: m.reference,
-        client: m.client?.nom ?? '',
-        objet: m.objet ?? '',
-        ville: m.ville ?? '',
-        phase: m.appelOffres ? "Appel d'offres" : (m.phase ?? ''),
-        statutAffaire: m.statutAffaire ?? '',
-        montant: m.montantTtc ?? '',
-        documents: m.nbDocuments ?? 0,
-        manquantes: (m.manquantes ?? []).join(', '),
-      })),
-    });
-
-    return reponse
-      .header('Content-Type', 'text/csv; charset=utf-8')
-      .header('Content-Disposition', `attachment; filename="${nomFichier('marches')}"`)
-      .send(csv);
+  enregistrerExport(app, {
+    chemin: '/api/marches',
+    base: 'marches',
+    feuille: 'Marchés',
+    construire: async (requete) => {
+      const marches = await listerMarches(requete);
+      return {
+        colonnes: [
+          { cle: 'reference', titre: 'Référence' },
+          { cle: 'lot', titre: 'Lot' },
+          { cle: 'client', titre: 'Client' },
+          { cle: 'objet', titre: 'Objet' },
+          { cle: 'objetTechnique', titre: 'Objet technique' },
+          { cle: 'ville', titre: 'Ville' },
+          { cle: 'phase', titre: 'Phase' },
+          { cle: 'statutAffaire', titre: 'Statut' },
+          { cle: 'numeroAo', titre: 'N° d’appel d’offres' },
+          { cle: 'montantHt', titre: 'Montant HT' },
+          { cle: 'montant', titre: 'Montant TTC' },
+          { cle: 'dateSignature', titre: 'Signature' },
+          { cle: 'dateOs', titre: 'Ordre de service' },
+          { cle: 'echeance', titre: 'Échéance' },
+          { cle: 'responsable', titre: 'Responsable' },
+          { cle: 'documents', titre: 'Documents' },
+          { cle: 'manquantes', titre: 'Pièces manquantes' },
+        ],
+        lignes: marches.map((m) => ({
+          reference: m.reference,
+          lot: m.lot ?? '',
+          client: m.client?.nom ?? '',
+          objet: m.objet ?? '',
+          objetTechnique: m.objetTechnique ?? '',
+          ville: m.ville ?? '',
+          phase: m.appelOffres ? "Appel d'offres" : (PHASES[m.phase]?.nom ?? m.phase ?? ''),
+          statutAffaire: m.statutAffaire ?? '',
+          numeroAo: m.numeroAo ?? '',
+          montantHt: m.montantHt ?? '',
+          montant: m.montantTtc ?? '',
+          dateSignature: m.dateSignature ?? '',
+          dateOs: m.dateOs ?? '',
+          echeance: m.echeance ?? '',
+          responsable: m.responsable?.nom ?? '',
+          documents: m.nbDocuments ?? 0,
+          manquantes: (m.manquantes ?? []).join(', '),
+        })),
+      };
+    },
   });
 
   // ── Fiche ─────────────────────────────────────────────────────
@@ -663,30 +679,41 @@ export default async function routesMarches(app) {
     return { ok: true };
   });
 
-  /** La liste des clients en CSV : mêmes lignes, même ordre que l'écran. */
-  app.get('/api/clients/export.csv', async (requete, reponse) => {
-    const clients = await listerClients(requete);
-    const csv = versCsv({
-      colonnes: [
-        { cle: 'nom', titre: 'Client' },
-        { cle: 'sigle', titre: 'Sigle' },
-        { cle: 'nbMarches', titre: 'Marchés' },
-        { cle: 'nbMarchesEnCours', titre: 'Marchés en cours' },
-        { cle: 'nbDocuments', titre: 'Pièces' },
-        { cle: 'statut', titre: 'Statut' },
-        { cle: 'domaines', titre: 'Domaines e-mail' },
-      ],
-      lignes: clients.map((c) => ({
-        ...c,
-        sigle: c.sigle ?? '',
-        statut: STATUTS_CLIENT[c.statut].nom,
-        domaines: c.domainesEmail.join(', '),
-      })),
-    });
-    return reponse
-      .header('Content-Type', 'text/csv; charset=utf-8')
-      .header('Content-Disposition', `attachment; filename="${nomFichier('clients')}"`)
-      .send(csv);
+  /** La liste des clients, en Excel ou en CSV : mêmes lignes, même ordre que l'écran. */
+  enregistrerExport(app, {
+    chemin: '/api/clients',
+    base: 'clients',
+    feuille: 'Clients',
+    construire: async (requete) => {
+      const clients = await listerClients(requete);
+      return {
+        colonnes: [
+          { cle: 'nom', titre: 'Client' },
+          { cle: 'sigle', titre: 'Sigle' },
+          { cle: 'type', titre: 'Type d’organisme' },
+          { cle: 'ville', titre: 'Ville' },
+          { cle: 'telephone', titre: 'Téléphone' },
+          { cle: 'email', titre: 'E-mail' },
+          { cle: 'ice', titre: 'ICE' },
+          { cle: 'nbMarches', titre: 'Marchés' },
+          { cle: 'nbMarchesEnCours', titre: 'Marchés en cours' },
+          { cle: 'nbDocuments', titre: 'Pièces' },
+          { cle: 'statut', titre: 'Statut' },
+          { cle: 'domaines', titre: 'Domaines e-mail' },
+        ],
+        lignes: clients.map((c) => ({
+          ...c,
+          sigle: c.sigle ?? '',
+          type: TYPES_ORGANISMES.find((t) => t.code === c.typeOrganisme)?.nom ?? '',
+          ville: c.ville ?? '',
+          telephone: c.telephone ?? '',
+          email: c.email ?? '',
+          ice: c.ice ?? '',
+          statut: STATUTS_CLIENT[c.statut].nom,
+          domaines: c.domainesEmail.join(', '),
+        })),
+      };
+    },
   });
 
   app.get('/api/clients/:id', async (requete) => {

@@ -38,6 +38,7 @@ import { Bouton } from '../ui/Bouton.jsx';
 import { Champ, Selection } from '../ui/Champ.jsx';
 import { Alerte, Badge, Carte, EnTetePage, EtatVide, SqueletteLignes } from '../ui/Elements.jsx';
 import { Confirmation, Modale } from '../ui/Modale.jsx';
+import { ModaleExport } from '../ui/ModaleExport.jsx';
 import { useToasts } from '../ui/Toasts.jsx';
 import { cx } from '../ui/cx.js';
 import { CLE_MARCHES } from './Marches.jsx';
@@ -164,7 +165,7 @@ export function PageAchats() {
         description="Le matériel de chaque marché : son fournisseur, ses prix, sa commande, sa livraison et son paiement."
         actions={
           <>
-            <Bouton variante="secondaire" taille="petit" icone={Download} onClick={() => (window.location.href = `/api/achats/export.csv${marcheId ? `?marcheId=${marcheId}` : ''}`)}>
+            <Bouton variante="secondaire" taille="petit" icone={Download} onClick={() => setModale({ type: 'export' })}>
               Exporter
             </Bouton>
             {gerer && (
@@ -235,6 +236,13 @@ export function PageAchats() {
       <ModaleImport ouverte={modale?.type === 'import'} marcheIdParDefaut={marcheId} surChangement={() => setModale(null)} surImporte={(id) => changer('marcheId', String(id))} />
       {prix && <ModaleCommande ouverte={modale?.type === 'commande'} commande={modale?.objet} marcheIdParDefaut={marcheId} surChangement={() => setModale(null)} />}
       {voitFournisseurs && <ModaleFournisseur ouverte={modale?.type === 'fournisseur'} fournisseur={modale?.objet} surChangement={() => setModale(null)} />}
+      <ModaleExport
+        ouverte={modale?.type === 'export'}
+        surChangement={() => setModale(null)}
+        chemin="/api/achats"
+        titre="Exporter les achats"
+        filtres={new URLSearchParams(marcheId ? { marcheId } : {})}
+      />
     </div>
   );
 }

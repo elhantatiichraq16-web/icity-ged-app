@@ -21,6 +21,7 @@ import { Bouton } from '../ui/Bouton.jsx';
 import { cx } from '../ui/cx.js';
 import { useToasts } from '../ui/Toasts.jsx';
 import { Confirmation } from '../ui/Modale.jsx';
+import { ModaleExport } from '../ui/ModaleExport.jsx';
 import { useSession } from '../auth/session.jsx';
 import { CaseLigne, RappelArchives, useArchivage } from './Archives.jsx';
 import { KanbanAppelsOffres, KanbanMarches } from './MarchesKanban.jsx';
@@ -283,6 +284,7 @@ export function PageMarches() {
   const [tri, setTri] = useState({ colonne: 'reference', sens: 1 });
   const [coches, setCoches] = useState(() => new Set());
   const [vue, setVueEtat] = useState(vueRetenue);
+  const [exportOuvert, setExport] = useState(false);
   function setVue(v) {
     setVueEtat(v);
     try {
@@ -496,14 +498,7 @@ export function PageMarches() {
                   variante="secondaire"
                   taille="petit"
                   icone={Download}
-                  onClick={() => {
-                    const requete = new URLSearchParams({ nature: 'marches' });
-                    if (phase) requete.set('phase', phase);
-                    if (clientId) requete.set('clientId', clientId);
-                    if (filtres.has('incomplets')) requete.set('incomplets', 'true');
-                    if (recherche.trim()) requete.set('q', recherche.trim());
-                    window.location.href = `/api/marches/export.csv?${requete}`;
-                  }}
+                  onClick={() => setExport(true)}
                 >
                   Exporter
                 </Bouton>
@@ -712,6 +707,22 @@ export function PageMarches() {
       )}
       </>
       )}
+
+      {/* L'export suit les filtres de l'écran, comme dans Odoo. */}
+      <ModaleExport
+        ouverte={exportOuvert}
+        surChangement={setExport}
+        chemin="/api/marches"
+        titre="Exporter les marchés"
+        filtres={(() => {
+          const requete = new URLSearchParams({ nature: 'marches' });
+          if (phase) requete.set('phase', phase);
+          if (clientId) requete.set('clientId', clientId);
+          if (filtres.has('incomplets')) requete.set('incomplets', 'true');
+          if (recherche.trim()) requete.set('q', recherche.trim());
+          return requete;
+        })()}
+      />
 
       <Confirmation
         ouverte={confirmerArchivage}

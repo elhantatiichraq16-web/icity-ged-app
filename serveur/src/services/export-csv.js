@@ -13,6 +13,8 @@
  * comme « MarchÃ© ».
  */
 
+import { versXlsx } from './ecriture-xlsx.js';
+
 /** Ce qu'Excel prendrait pour une formule. */
 const DEBUT_FORMULE = /^[=+\-@\t\r]/;
 
@@ -57,7 +59,44 @@ export function versCsv({ colonnes, lignes }) {
 }
 
 /** Un nom de fichier daté, sans caractère que Windows refuse. */
-export function nomFichier(base) {
+export function nomFichier(base, extension = 'csv') {
   const jour = new Date().toISOString().slice(0, 10);
-  return `${base}-${jour}.csv`.replace(/[^a-zA-Z0-9.\-_]/g, '-');
+  return `${base}-${jour}.${extension}`.replace(/[^a-zA-Z0-9.\-_]/g, '-');
+}
+
+/**
+ * Un export de tableau, comme ceux d'Odoo : en Excel (.xlsx) ou en CSV, avec
+ * les colonnes choisies.
+ *
+ *  - `GET <chemin>/export/colonnes` : les colonnes qu'on peut choisir (selon
+ *    les droits : les prix restent aux achats et à la direction) ;
+ *  - `GET <chemin>/export.xlsx` et `<chemin>/export.csv` : le tableau, avec les
+ *    mêmes filtres et les mêmes droits que l'écran ; `?colonnes=a,b,c` n'en
+ *    garde que celles-là, dans leur ordre d'origine.
+ *
+ * @param {import('fastify').FastifyInstance} app
+ * @param {{ chemin: string, options?: object, base: string, feuille: string,
+ *           construire: (requete: object) => Promise<{ colonnes: {cle: string, titre: string}[], lignes: object[] }> }} p
+ */
+export function enregistrerExport(app, { chemin, options = {}, base, feuille, construire }) {
+  app.get(`${chemin}/export/colonnes`, options, async (requete) => (await construire(requete)).colonnes);
+
+  for (const format of ['csv', 'xlsx']) {
+    app.get(`${chemin}/export.${format}`, options, async (requete, reponse) => {
+      const { colonnes, lignes } = await construire(requete);
+      const choix = requete.query.colonnes ? String(requete.query.colonnes).split(',') : null;
+      const retenues = choix ? colonnes.filter((c) => choix.includes(c.cle)) : colonnes;
+      if (!retenues.length) return reponse.code(422).send({ message: 'Choisissez au moins une colonne.' });
+      if (format === 'csv') {
+        return reponse
+          .header('Content-Type', 'text/csv; charset=utf-8')
+          .header('Content-Disposition', `attachment; filename="${nomFichier(base)}"`)
+          .send(versCsv({ colonnes: retenues, lignes }));
+      }
+      return reponse
+        .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        .header('Content-Disposition', `attachment; filename="${nomFichier(base, 'xlsx')}"`)
+        .send(versXlsx({ colonnes: retenues, lignes, feuille }));
+    });
+  }
 }

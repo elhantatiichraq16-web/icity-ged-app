@@ -43,7 +43,7 @@ import { envoyerMail } from '../services/courriel-sortant.js';
 import { importerClasseurAchats } from '../services/import-achats.js';
 import { journaliser } from '../services/journal.js';
 import { ErreurClasseur } from '../services/lecture-xlsx.js';
-import { nomFichier, versCsv } from '../services/export-csv.js';
+import { enregistrerExport } from '../services/export-csv.js';
 import { FORMATS, TAILLE_MAX, verserFichier } from '../services/stockage.js';
 import { appliquerPiece } from '../services/suivi-achats.js';
 
@@ -268,46 +268,51 @@ export default async function routesAchats(app) {
   });
 
   /** Les lignes en CSV, pour Excel : les prix seulement pour qui peut les voir. */
-  app.get('/api/achats/export.csv', { preHandler: exiger('lire', 'Achat') }, async (requete, reponse) => {
-    const { prix, lignes } = await listerLignes(requete);
-    const colonnes = [
-      { cle: 'marche', titre: 'Marché' },
-      { cle: 'numero', titre: 'N°' },
-      { cle: 'categorie', titre: 'Catégorie' },
-      { cle: 'designation', titre: 'Matériel' },
-      { cle: 'quantite', titre: 'Qté' },
-      ...(prix
-        ? [
-            { cle: 'puBudget', titre: 'P.U. AO' },
-            { cle: 'totalBudget', titre: 'P.T. AO' },
-            { cle: 'puAchat', titre: 'P.U. achat' },
-            { cle: 'totalAchat', titre: 'P.T. achat' },
-            { cle: 'puVente', titre: 'P.U. vente' },
-            { cle: 'totalVente', titre: 'P.T. vente' },
-            { cle: 'margePct', titre: 'Marge %' },
-          ]
-        : []),
-      { cle: 'marque', titre: 'Marque' },
-      { cle: 'referenceOffre', titre: 'Réf. offre technique' },
-      { cle: 'referenceAchat', titre: 'Réf. achat' },
-      { cle: 'fournisseurNom', titre: 'Fournisseur' },
-      ...(prix ? [{ cle: 'conditionsPaiement', titre: 'Conditions de paiement' }] : []),
-      { cle: 'delaiLivraison', titre: 'Délai de livraison' },
-      { cle: 'statutNom', titre: 'Statut' },
-      { cle: 'etd', titre: 'Livraison prévue' },
-      { cle: 'commentaire', titre: 'Commentaire' },
-    ];
-    const csv = versCsv({
-      colonnes,
-      lignes: lignes.map((l) => ({
-        ...l,
-        marche: l.marche?.reference ?? '',
-        fournisseurNom: l.fournisseur?.nom ?? '',
-        statutNom: statutAchat(l.statut).nom,
-        margePct: l.marge === null || l.marge === undefined ? '' : Math.round(l.marge * 1000) / 10,
-      })),
-    });
-    return reponse.header('Content-Type', 'text/csv; charset=utf-8').header('Content-Disposition', `attachment; filename="${nomFichier('achats')}"`).send(csv);
+  enregistrerExport(app, {
+    chemin: '/api/achats',
+    options: { preHandler: exiger('lire', 'Achat') },
+    base: 'achats',
+    feuille: 'Achats',
+    construire: async (requete) => {
+      const { prix, lignes } = await listerLignes(requete);
+      const colonnes = [
+        { cle: 'marche', titre: 'Marché' },
+        { cle: 'numero', titre: 'N°' },
+        { cle: 'categorie', titre: 'Catégorie' },
+        { cle: 'designation', titre: 'Matériel' },
+        { cle: 'quantite', titre: 'Qté' },
+        ...(prix
+          ? [
+              { cle: 'puBudget', titre: 'P.U. AO' },
+              { cle: 'totalBudget', titre: 'P.T. AO' },
+              { cle: 'puAchat', titre: 'P.U. achat' },
+              { cle: 'totalAchat', titre: 'P.T. achat' },
+              { cle: 'puVente', titre: 'P.U. vente' },
+              { cle: 'totalVente', titre: 'P.T. vente' },
+              { cle: 'margePct', titre: 'Marge %' },
+            ]
+          : []),
+        { cle: 'marque', titre: 'Marque' },
+        { cle: 'referenceOffre', titre: 'Réf. offre technique' },
+        { cle: 'referenceAchat', titre: 'Réf. achat' },
+        { cle: 'fournisseurNom', titre: 'Fournisseur' },
+        ...(prix ? [{ cle: 'conditionsPaiement', titre: 'Conditions de paiement' }] : []),
+        { cle: 'delaiLivraison', titre: 'Délai de livraison' },
+        { cle: 'statutNom', titre: 'Statut' },
+        { cle: 'etd', titre: 'Livraison prévue' },
+        { cle: 'commentaire', titre: 'Commentaire' },
+      ];
+      return {
+        colonnes,
+        lignes: lignes.map((l) => ({
+          ...l,
+          marche: l.marche?.reference ?? '',
+          fournisseurNom: l.fournisseur?.nom ?? '',
+          statutNom: statutAchat(l.statut).nom,
+          margePct: l.marge === null || l.marge === undefined ? '' : Math.round(l.marge * 1000) / 10,
+        })),
+      };
+    },
   });
 
   // ── L'import du classeur ──────────────────────────────────────
