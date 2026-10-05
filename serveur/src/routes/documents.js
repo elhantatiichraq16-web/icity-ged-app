@@ -107,32 +107,39 @@ export default async function routesDocuments(app) {
 
     const where = {
       supprimeLe: null,
-      ...filtreVisibilite(requete.utilisateur),
       ...(listeIds ? { id: { in: listeIds } } : {}),
-      // Les pièces archivées (elles-mêmes ou par leur marché) restent hors de
-      // la liste, sauf à les demander — ou à ouvrir un marché précis.
-      ...(archives === 'seuls'
-        ? { AND: [PIECES_ARCHIVEES] }
-        : archives === 'tous' || marcheId || listeIds
-          ? {}
-          : PIECES_HORS_ARCHIVES),
       ...(marcheId ? { marcheId: Number(marcheId) } : {}),
       ...(sansMarche === 'true' ? { marcheId: null } : {}),
       ...(clientId ? { clientId: Number(clientId) } : {}),
       ...(typeId ? { typeDocumentId: Number(typeId) } : {}),
       ...(statutOcr ? { statutOcr: String(statutOcr) } : {}),
       ...(source ? { source: String(source) } : {}),
-      ...(q
-        ? {
-            OR: [
-              // Sans tenir compte des majuscules : « tgr » trouve « TGR ».
-              { titre: { contains: String(q), mode: 'insensitive' } },
-              { nomOrigine: { contains: String(q), mode: 'insensitive' } },
-              { marche: { reference: { contains: String(q), mode: 'insensitive' } } },
-              { client: { nom: { contains: String(q), mode: 'insensitive' } } },
-            ],
-          }
-        : {}),
+      /*
+       * Chaque condition « l'une ou l'autre » va dans ce AND, jamais à la
+       * racine : deux `OR` à la racine s'écrasent. C'est ainsi qu'une
+       * recherche par mot effaçait le filtre de confidentialité, et laissait
+       * un lecteur voir le titre de pièces confidentielles.
+       */
+      AND: [
+        // Ce que l'utilisateur a le droit de voir (§8) : toujours.
+        filtreVisibilite(requete.utilisateur),
+        // Les pièces archivées (elles-mêmes ou par leur marché) restent hors
+        // de la liste, sauf à les demander — ou à ouvrir un marché précis.
+        ...(archives === 'seuls' ? [PIECES_ARCHIVEES] : archives === 'tous' || marcheId || listeIds ? [] : [PIECES_HORS_ARCHIVES]),
+        ...(q
+          ? [
+              {
+                OR: [
+                  // Sans tenir compte des majuscules : « tgr » trouve « TGR ».
+                  { titre: { contains: String(q), mode: 'insensitive' } },
+                  { nomOrigine: { contains: String(q), mode: 'insensitive' } },
+                  { marche: { reference: { contains: String(q), mode: 'insensitive' } } },
+                  { client: { nom: { contains: String(q), mode: 'insensitive' } } },
+                ],
+              },
+            ]
+          : []),
+      ],
     };
 
     const [total, documents] = await Promise.all([

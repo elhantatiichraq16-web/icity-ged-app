@@ -93,6 +93,14 @@ const AVEC = {
   archivePar: { select: { id: true, nom: true } },
 };
 
+/** Le responsable choisi doit être un compte existant : sinon, un message clair. */
+async function verifierResponsable(responsableId) {
+  if (!responsableId) return;
+  if (!(await db.utilisateur.findUnique({ where: { id: responsableId } }))) {
+    throw new ErreurHttp(422, 'Certains champs sont à corriger.', { erreurs: { responsableId: 'Ce compte n’existe pas.' } });
+  }
+}
+
 /** À la création, la référence est la seule information obligatoire. */
 const schemaNouveauMarche = schemaMarche.extend({ reference: z.string().trim().min(2).max(80) });
 
@@ -322,6 +330,7 @@ export default async function routesMarches(app) {
    */
   app.post('/api/marches', { preHandler: exiger('creer', 'Marche') }, async (requete, reponse) => {
     const champs = valider(schemaNouveauMarche, requete.body);
+    await verifierResponsable(champs.responsableId);
     const cle = cleDeReference(champs.reference, champs.lot);
 
     const existant = await db.marche.findUnique({ where: { referenceNormalisee: cle } });
@@ -356,6 +365,7 @@ export default async function routesMarches(app) {
     if (!avant) throw introuvable('Marché');
 
     const champs = valider(schemaMarche, requete.body);
+    await verifierResponsable(champs.responsableId);
     const data = { ...champs };
     for (const champDate of ['dateSignature', 'dateOs', 'dateFin']) {
       if (champDate in data) data[champDate] = date(data[champDate]);

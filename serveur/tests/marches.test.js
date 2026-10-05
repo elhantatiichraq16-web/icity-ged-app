@@ -266,6 +266,37 @@ describe('API des clients', () => {
   });
 });
 
+describe('responsable d’un marché', () => {
+  it('se choisit sur la fiche, et un compte inconnu est refusé clairement', async () => {
+    const m = await creerMarche('31/2016');
+    const chef = await creerUtilisateur('chef_projet');
+    const requete = en(app, await connecter(app, chef.email));
+    const r = await requete('PATCH', `/api/marches/${m.id}`, { responsableId: chef.id });
+    expect(r.json().responsable).toEqual({ id: chef.id, nom: chef.nom });
+    const refus = await requete('PATCH', `/api/marches/${m.id}`, { responsableId: 999999 });
+    expect(refus.statusCode).toBe(422);
+    expect(refus.json().erreurs.responsableId).toMatch(/n’existe pas/);
+  });
+});
+
+describe('confidentialité de la recherche', () => {
+  it('un mot cherché ne fait jamais voir une pièce confidentielle à un lecteur', async () => {
+    const m = await creerMarche('31/2016');
+    await poser(m, 'OS', { titre: 'Offre financière publique' });
+    await poser(m, 'CM', { titre: 'Offre financière secrète', confidentialite: 'confidentiel' });
+
+    const lecteur = en(app, await connecter(app, (await creerUtilisateur('lecteur')).email));
+    // Sans mot : le filtre tient. Avec un mot : il doit tenir aussi.
+    expect((await lecteur('GET', '/api/documents')).json().documents.map((d) => d.titre)).toEqual(['Offre financière publique']);
+    expect((await lecteur('GET', '/api/documents?q=offre')).json().documents.map((d) => d.titre)).toEqual(['Offre financière publique']);
+    expect((await lecteur('GET', '/api/documents?q=secrète')).json().total).toBe(0);
+
+    // Celui qui a le droit les voit toutes les deux.
+    const directeur = en(app, await connecter(app, (await creerUtilisateur('directeur')).email));
+    expect((await directeur('GET', '/api/documents?q=offre')).json().total).toBe(2);
+  });
+});
+
 describe('export et recherche', () => {
   it('l’export CSV des marchés porte le montant TTC', async () => {
     const m = await creerMarche('31/2016', { montantTtc: 1250000.5 });

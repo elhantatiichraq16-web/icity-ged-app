@@ -377,10 +377,13 @@ function OngletInformations({ m }) {
   const { notifier } = useToasts();
   const modifiable = droits.can('modifier', 'Marche');
   const clients = useQuery({ queryKey: ['clients'], queryFn: () => api('/api/clients') });
+  // Les comptes actifs, pour choisir qui suit le marché (« Mes marchés »).
+  const equipe = useQuery({ queryKey: ['equipe'], queryFn: () => api('/api/equipe') });
 
   const f = useFormulaire({
     reference: m.reference,
     clientId: m.client?.id ? String(m.client.id) : '',
+    responsableId: m.responsable?.id ? String(m.responsable.id) : '',
     objet: m.objet ?? '',
     numeroAo: m.numeroAo ?? '',
     lot: m.lot ?? '',
@@ -403,6 +406,7 @@ function OngletInformations({ m }) {
         corps: {
           reference: valeurs.reference.trim(),
           clientId: valeurs.clientId ? Number(valeurs.clientId) : null,
+          responsableId: valeurs.responsableId ? Number(valeurs.responsableId) : null,
           objet: valeurs.objet.trim() || null,
           numeroAo: valeurs.numeroAo.trim() || null,
           lot: valeurs.lot.trim() || null,
@@ -451,6 +455,15 @@ function OngletInformations({ m }) {
           {(clients.data ?? []).map((c) => (
             <option key={c.id} value={String(c.id)}>
               {c.nom}
+            </option>
+          ))}
+        </Selection>
+        <Selection libelle="Responsable" aide="Qui suit ce marché : il le retrouve dans le filtre « Mes marchés »." {...commun('responsableId')}>
+          <option value="">— personne —</option>
+          {/* Le responsable actuel reste proposé, même si son compte a été désactivé. */}
+          {[...(equipe.data ?? []), ...(m.responsable && !(equipe.data ?? []).some((u) => u.id === m.responsable.id) ? [m.responsable] : [])].map((u) => (
+            <option key={u.id} value={String(u.id)}>
+              {u.nom}
             </option>
           ))}
         </Selection>
