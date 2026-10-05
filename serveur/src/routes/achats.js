@@ -756,6 +756,23 @@ export default async function routesAchats(app) {
     }
   });
 
+  /**
+   * Dupliquer une commande, comme dans Odoo : le même fournisseur, le même
+   * marché, les mêmes conditions — mais ni dates, ni montant, ni lignes.
+   */
+  app.post('/api/commandes-fournisseur/:id/dupliquer', { preHandler: exiger('gerer', 'Achat') }, async (requete, reponse) => {
+    const source = await db.commandeFournisseur.findUnique({ where: { id: Number(requete.params.id) || 0 } });
+    if (!source) throw introuvable('Commande');
+    const copie = await db.commandeFournisseur.create({
+      data: { marcheId: source.marcheId, fournisseurId: source.fournisseurId, modalite: source.modalite, avancePourcent: source.avancePourcent, notes: source.notes },
+    });
+    await journaliser(
+      { utilisateurId: requete.utilisateur.id, action: 'commande.creee', objetType: 'CommandeFournisseur', objetId: copie.id, commentaire: `copie de la commande n° ${source.id}`, ip: requete.ip },
+      requete.log,
+    );
+    return reponse.code(201).send({ id: copie.id });
+  });
+
   app.delete('/api/commandes-fournisseur/:id', { preHandler: exiger('gerer', 'Achat') }, async (requete) => {
     const id = Number(requete.params.id) || 0;
     const commande = await db.commandeFournisseur.findUnique({ where: { id } });

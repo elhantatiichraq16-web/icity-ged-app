@@ -12,9 +12,9 @@
  * Réservée, comme les prix, aux achats et à la direction.
  */
 import { useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Check, FileDown, FileText, Package, Pencil, Send, Upload } from 'lucide-react';
+import { ArrowLeft, Check, Copy, FileDown, FileText, Package, Pencil, Send, Upload } from 'lucide-react';
 import { ETAPES_COMMANDE, ETATS_PAIEMENT, modalitePaiement, statutAchat } from '@icity/commun/achats';
 import { api } from '../api.js';
 import { useSession } from '../auth/session.jsx';
@@ -210,6 +210,18 @@ export function PageFicheCommande() {
   const [emetteurId, setEmetteurId] = useState(null);
   const relire = useRelire();
   const { notifier } = useToasts();
+  const naviguer = useNavigate();
+
+  /** Dupliquer, comme dans Odoo : la copie s'ouvre aussitôt. */
+  const dupliquer = useMutation({
+    mutationFn: () => api(`/api/commandes-fournisseur/${id}/dupliquer`, { methode: 'POST', corps: {} }),
+    onSuccess: ({ id: nouvelle }) => {
+      relire();
+      notifier({ titre: 'Commande dupliquée', message: 'La copie reprend le fournisseur, le marché et les conditions ; ajoutez-y ses lignes.', ton: 'ok' });
+      naviguer(`/achats/commandes/${nouvelle}`);
+    },
+    onError: (e) => notifier({ titre: 'Duplication impossible', message: e.message, ton: 'alerte' }),
+  });
 
   /*
    * L'onglet s'ouvre tout de suite, au clic : ouvert après l'attente, le
@@ -277,6 +289,9 @@ export function PageFicheCommande() {
             <div className="flex flex-wrap items-center gap-2">
               <Bouton variante="secondaire" taille="petit" icone={Pencil} onClick={() => setEdition(true)}>
                 Modifier
+              </Bouton>
+              <Bouton variante="secondaire" taille="petit" icone={Copy} chargement={dupliquer.isPending} onClick={() => dupliquer.mutate()}>
+                Dupliquer
               </Bouton>
               <Bouton variante="secondaire" taille="petit" icone={FileDown} chargement={preparer.isPending} libelleChargement="Préparation…" onClick={() => preparer.mutate(window.open('', '_blank'))}>
                 Bon de commande PDF

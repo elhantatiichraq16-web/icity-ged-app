@@ -4,9 +4,9 @@
  * Documents / Échanges / Journal / Informations.
  */
 import { lazy, Suspense, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Archive, ArchiveRestore, ArrowLeft, Building2, Check, ChevronRight, FileText, Mail, ShoppingCart, Upload, X } from 'lucide-react';
+import { AlertTriangle, Archive, ArchiveRestore, ArrowLeft, Building2, Check, Copy, ChevronRight, FileText, Mail, ShoppingCart, Upload, X } from 'lucide-react';
 import { CONSERVATIONS, ORDRE_PHASES, PHASES, PIECES_CYCLE, STATUTS_AFFAIRE } from '@icity/commun/marches';
 import { api } from '../api.js';
 import { useSession } from '../auth/session.jsx';
@@ -16,7 +16,7 @@ import { Bouton } from '../ui/Bouton.jsx';
 import { Champ, Selection } from '../ui/Champ.jsx';
 import { Alerte, Badge, Carte, EtatVide, SqueletteLignes } from '../ui/Elements.jsx';
 import { cx } from '../ui/cx.js';
-import { Confirmation } from '../ui/Modale.jsx';
+import { Confirmation, Modale } from '../ui/Modale.jsx';
 import { useToasts } from '../ui/Toasts.jsx';
 import { useArchivage } from './Archives.jsx';
 import { allerAuFil, BoutonRaccourci, FilActivite } from './FilActivite.jsx';
@@ -57,7 +57,10 @@ export function PageFicheMarche() {
         <Link to={m.archive ? '/archives' : '/marches'} className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-cyan-texte hover:underline">
           <ArrowLeft className="size-4" aria-hidden /> {m.archive ? 'Archives' : 'Tous les marchés'}
         </Link>
-        <BoutonArchivage m={m} />
+        <div className="flex flex-wrap gap-2">
+          <BoutonDupliquer m={m} />
+          <BoutonArchivage m={m} />
+        </div>
       </div>
 
       {m.archive && (
@@ -112,6 +115,66 @@ export function PageFicheMarche() {
 
       <FilActivite type="marche" id={m.id} className="mt-6" />
     </div>
+  );
+}
+
+/**
+ * Dupliquer ce marché, comme dans Odoo : une nouvelle affaire avec le même
+ * client, le même objet et le même responsable, sous sa propre référence.
+ */
+function BoutonDupliquer({ m }) {
+  const [ouverte, setOuverte] = useState(false);
+  const [reference, setReference] = useState('');
+  const [erreur, setErreur] = useState('');
+  const { droits } = useSession();
+  const naviguer = useNavigate();
+  const file = useQueryClient();
+  const { notifier } = useToasts();
+  const dupliquer = useMutation({
+    mutationFn: () => api(`/api/marches/${m.id}/dupliquer`, { methode: 'POST', corps: { reference } }),
+    onSuccess: (copie) => {
+      file.invalidateQueries({ queryKey: CLE_MARCHES });
+      notifier({ titre: 'Marché dupliqué', message: `${copie.reference} reprend le client, l’objet et le responsable de ${m.reference}.`, ton: 'ok' });
+      setOuverte(false);
+      setReference('');
+      naviguer(`/marches/${copie.id}`);
+    },
+    onError: (e) => setErreur(e.erreurs?.reference ?? e.message),
+  });
+  if (!droits.can('creer', 'Marche')) return null;
+  return (
+    <>
+      <Bouton variante="secondaire" taille="petit" icone={Copy} onClick={() => setOuverte(true)}>
+        Dupliquer
+      </Bouton>
+      <Modale
+        ouverte={ouverte}
+        surChangement={setOuverte}
+        titre={`Dupliquer ${m.reference}`}
+        description="La nouvelle affaire reprend le client, l’objet, la ville, l’objet technique et le responsable. Ni pièces, ni dates, ni montants."
+        pied={
+          <>
+            <Bouton variante="fantome" onClick={() => setOuverte(false)} disabled={dupliquer.isPending}>
+              Annuler
+            </Bouton>
+            <Bouton icone={Copy} disabled={reference.trim().length < 2} chargement={dupliquer.isPending} onClick={() => dupliquer.mutate()}>
+              Dupliquer
+            </Bouton>
+          </>
+        }
+      >
+        <Champ
+          libelle="Référence de la nouvelle affaire"
+          autoFocus
+          value={reference}
+          erreur={erreur}
+          onChange={(e) => {
+            setReference(e.target.value);
+            setErreur('');
+          }}
+        />
+      </Modale>
+    </>
   );
 }
 

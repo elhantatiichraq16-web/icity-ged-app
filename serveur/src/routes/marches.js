@@ -358,6 +358,41 @@ export default async function routesMarches(app) {
     return reponse.code(201).send(vueMarche(cree));
   });
 
+  /**
+   * Dupliquer un marché, comme dans Odoo : une nouvelle affaire avec le même
+   * client, le même objet et le même responsable, sous sa propre référence.
+   * Ni pièces, ni dates, ni montants : ils sont propres à chaque affaire.
+   */
+  app.post('/api/marches/:id/dupliquer', { preHandler: exiger('creer', 'Marche') }, async (requete, reponse) => {
+    const source = await db.marche.findUnique({ where: { id: Number(requete.params.id) || 0 } });
+    if (!source) throw introuvable('Marché');
+    const { reference, lot } = valider(z.object({ reference: z.string().trim().min(2, { error: 'Saisissez la référence de la nouvelle affaire.' }).max(80), lot: z.string().trim().max(10).nullish() }), requete.body);
+    const cle = cleDeReference(reference, lot);
+    const existant = await db.marche.findUnique({ where: { referenceNormalisee: cle } });
+    if (existant) throw new ErreurHttp(409, `L’affaire « ${existant.reference} » existe déjà.`, { erreurs: { reference: `Déjà utilisée par « ${existant.reference} ».` } });
+
+    const copie = await db.marche.create({
+      data: {
+        reference,
+        referenceNormalisee: cle,
+        variantes: [reference],
+        lot: lot || null,
+        clientId: source.clientId,
+        objet: source.objet,
+        ville: source.ville,
+        objetTechnique: source.objetTechnique,
+        responsableId: source.responsableId,
+        conservation: source.conservation,
+        statutAffaire: source.statutAffaire,
+      },
+    });
+    await journaliser(
+      { utilisateurId: requete.utilisateur.id, action: 'marche.cree', objetType: 'Marche', objetId: copie.id, apres: { reference }, commentaire: `copie de ${source.reference}`, ip: requete.ip },
+      requete.log,
+    );
+    return reponse.code(201).send({ id: copie.id, reference: copie.reference });
+  });
+
   // ── Modification (onglet Informations) ────────────────────────
   app.patch('/api/marches/:id', { preHandler: exiger('modifier', 'Marche') }, async (requete) => {
     const id = Number(requete.params.id) || 0;

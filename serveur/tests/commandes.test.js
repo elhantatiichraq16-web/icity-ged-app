@@ -173,3 +173,16 @@ describe('pièces du fournisseur', () => {
     expect((await verserPiece(s, { type: 'XXX', date: '2026-10-01' })).statusCode).toBe(422);
   });
 });
+
+describe('dupliquer une commande', () => {
+  it('reprend le fournisseur, le marché et les conditions, sans lignes ni dates', async () => {
+    await db.commandeFournisseur.update({ where: { id: commande.id }, data: { dateCommande: new Date('2026-09-01'), montantTtc: 3600, notes: 'Livraison au siège' } });
+    const { requete } = await achats();
+    const r = await requete('POST', `/api/commandes-fournisseur/${commande.id}/dupliquer`, {});
+    expect(r.statusCode).toBe(201);
+    const copie = await db.commandeFournisseur.findUnique({ where: { id: r.json().id }, include: { lignes: true } });
+    expect(copie).toMatchObject({ marcheId: marche.id, fournisseurId: fournisseur.id, modalite: 'virement', notes: 'Livraison au siège', dateCommande: null, montantTtc: null });
+    expect(Number(copie.avancePourcent)).toBe(30);
+    expect(copie.lignes).toHaveLength(0);
+  });
+});

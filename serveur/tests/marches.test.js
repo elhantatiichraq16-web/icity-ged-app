@@ -375,3 +375,20 @@ describe('fiche client (modèle Odoo)', () => {
     expect((await requete('POST', `/api/clients/${client.id}/contacts`, { nom: 'Karim Alami' })).statusCode).toBe(403);
   });
 });
+
+describe('dupliquer un marché', () => {
+  it('reprend le client, l’objet et le responsable sous une nouvelle référence, sans pièces', async () => {
+    const chef = await creerUtilisateur('chef_projet');
+    const m = await creerMarche('31/2016', { objet: 'Vidéosurveillance', ville: 'Rabat', responsableId: chef.id, montantTtc: 1000 });
+    await poser(m, 'OS');
+    const requete = en(app, await connecter(app, chef.email));
+
+    const r = await requete('POST', `/api/marches/${m.id}/dupliquer`, { reference: '07/2027' });
+    expect(r.statusCode).toBe(201);
+    const copie = await db.marche.findUnique({ where: { id: r.json().id } });
+    expect(copie).toMatchObject({ reference: '07/2027', clientId: client.id, objet: 'Vidéosurveillance', ville: 'Rabat', responsableId: chef.id, montantTtc: null });
+    expect(await db.document.count({ where: { marcheId: copie.id } })).toBe(0);
+
+    expect((await requete('POST', `/api/marches/${m.id}/dupliquer`, { reference: '31/2016' })).statusCode).toBe(409);
+  });
+});
