@@ -59,6 +59,34 @@ export function useArchivage() {
   });
 }
 
+/**
+ * Le rappel posé sur un écran vide : le fonds précédent est aux archives.
+ *
+ * Après un archivage de fin d'exercice, un tableau de bord à zéro ou une
+ * liste vide feraient croire que tout a été perdu. Rien ne s'affiche tant
+ * que les archives sont vides.
+ */
+export function RappelArchives({ className }) {
+  const resume = useQuery({ queryKey: [...CLE_ARCHIVES, 'resume'], queryFn: () => api('/api/archives/resume') });
+  const r = resume.data;
+  if (!r || (!r.marches && !r.documents)) return null;
+
+  const parties = [
+    r.marches ? `${r.marches} marché${r.marches > 1 ? 's' : ''}` : null,
+    r.documents ? `${r.documents} pièce${r.documents > 1 ? 's' : ''}` : null,
+  ].filter(Boolean);
+  return (
+    <Alerte ton="info" className={className}>
+      <span>
+        Le fonds précédent est aux archives : <strong>{parties.join(' et ')}</strong>. Rien n’a été perdu.{' '}
+        <Link to="/archives" className="font-semibold text-cyan-texte hover:underline">
+          Ouvrir les archives →
+        </Link>
+      </span>
+    </Alerte>
+  );
+}
+
 /** Une case à cocher de tableau : un clic ne doit pas ouvrir la ligne. */
 export function CaseLigne({ libelle, ...reste }) {
   return (
@@ -101,7 +129,7 @@ export function PageArchives() {
           >
             {libelle}
             {n !== undefined && (
-              <span className={cx('chiffres rounded-full px-2 text-[11.5px]', onglet === cle ? 'bg-cyan-voile text-cyan-texte' : 'bg-surface-2')}>{n}</span>
+              <span className={cx('chiffres rounded-full px-2 text-[12.5px]', onglet === cle ? 'bg-cyan-voile text-cyan-texte' : 'bg-surface-2')}>{n}</span>
             )}
           </button>
         ))}
@@ -200,7 +228,7 @@ function OngletMarches({ archives }) {
                 <table className="w-full min-w-[760px] text-sm">
                   <caption className="sr-only">Marchés archivés</caption>
                   <thead>
-                    <tr className="border-b border-trait text-left text-[12px] tracking-wide text-encre-3 uppercase">
+                    <tr className="border-b border-trait text-left text-[13px] tracking-wide text-encre-3 uppercase">
                       {peutArchiver && (
                         <th scope="col" className="w-10 px-3 py-3">
                           <input
@@ -228,7 +256,7 @@ function OngletMarches({ archives }) {
                           <Link to={`/marches/${m.id}`} onClick={(e) => e.stopPropagation()} className="chiffres font-medium text-cyan-texte hover:underline">
                             {m.reference}
                           </Link>
-                          {m.lot && <span className="ml-1.5 text-[11.5px] text-encre-3">lot {m.lot}</span>}
+                          {m.lot && <span className="ml-1.5 text-[12.5px] text-encre-3">lot {m.lot}</span>}
                         </td>
                         <td className="max-w-44 truncate px-3 py-2.5 text-encre-2" title={m.client?.nom}>
                           {m.client?.nom ?? '—'}
@@ -241,7 +269,7 @@ function OngletMarches({ archives }) {
                         </td>
                         <td className="px-3 py-2.5 text-[13px] text-encre-2">
                           <span className="chiffres">{dateCourte(m.archive.le)}</span>
-                          {m.archive.par && <span className="block text-[12px] text-encre-3">par {m.archive.par}</span>}
+                          {m.archive.par && <span className="block text-[13px] text-encre-3">par {m.archive.par}</span>}
                         </td>
                         <td className="chiffres px-3 py-2.5 text-right text-encre-2">{m.nbDocuments}</td>
                       </tr>
@@ -335,7 +363,7 @@ function OngletDocuments({ pieces, page, setPage }) {
           <table className="w-full min-w-[720px] text-sm">
             <caption className="sr-only">Pièces archivées</caption>
             <thead>
-              <tr className="border-b border-trait text-left text-[12px] tracking-wide text-encre-3 uppercase">
+              <tr className="border-b border-trait text-left text-[13px] tracking-wide text-encre-3 uppercase">
                 {peutArchiver && (
                   <th scope="col" className="w-10 px-3 py-3">
                     <input

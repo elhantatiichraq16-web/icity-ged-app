@@ -122,7 +122,7 @@ function Table({ titre, aide, chemin, cle, entrees, colonnes, champs, groupePar 
         <table className="w-full text-sm">
           <caption className="sr-only">{titre}</caption>
           <thead>
-            <tr className="border-b border-trait text-left text-[12px] tracking-wide text-encre-3 uppercase">
+            <tr className="border-b border-trait text-left text-[13px] tracking-wide text-encre-3 uppercase">
               {colonnes.map((c) => (
                 <th key={c.cle} scope="col" className={`px-4 py-3 font-semibold ${c.className ?? ''}`}>
                   {c.titre}
@@ -180,7 +180,7 @@ function FragmentGroupe({ groupe, colonnes, surEditer, surSupprimer }) {
     <>
       {groupe.nom && (
         <tr className="bg-surface-2">
-          <td colSpan={colonnes.length + 2} className="px-4 py-1.5 text-[12px] font-semibold tracking-wide text-encre-3 uppercase">
+          <td colSpan={colonnes.length + 2} className="px-4 py-1.5 text-[13px] font-semibold tracking-wide text-encre-3 uppercase">
             {groupe.nom}
           </td>
         </tr>

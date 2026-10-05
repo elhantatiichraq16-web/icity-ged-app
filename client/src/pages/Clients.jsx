@@ -97,7 +97,7 @@ function PastilleClient({ client, className }) {
 /** Un compteur en pastille arrondie : « 3 marchés ». */
 function Pilule({ icone: Icone, children, className }) {
   return (
-    <span className={cx('inline-flex items-center gap-1.5 rounded-full border border-trait bg-surface-2 px-2.5 py-0.5 text-[12.5px] font-medium whitespace-nowrap text-encre-2', className)}>
+    <span className={cx('inline-flex items-center gap-1.5 rounded-full border border-trait bg-surface-2 px-2.5 py-0.5 text-[13px] font-medium whitespace-nowrap text-encre-2', className)}>
       {Icone && <Icone className="size-3.5 text-encre-3" aria-hidden />}
       {children}
     </span>
@@ -137,7 +137,7 @@ function MenuClient({ client }) {
           </DropdownMenu.Item>
           <DropdownMenu.Item className={ELEMENT_MENU} disabled={client.nbDocuments === 0} onSelect={() => naviguer(`/documents?clientId=${client.id}`)}>
             <FileText className="size-4 text-encre-3" aria-hidden /> Voir ses pièces
-            <span className="chiffres ml-auto text-[12px] text-encre-3">{client.nbDocuments}</span>
+            <span className="chiffres ml-auto text-[13px] text-encre-3">{client.nbDocuments}</span>
           </DropdownMenu.Item>
           <DropdownMenu.Separator className="my-1 h-px bg-trait" />
           <DropdownMenu.Item
@@ -189,7 +189,7 @@ function VueTableau({ clients, tri, surTri }) {
     <Carte className="overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-sm">
-          <thead className="border-b border-trait bg-surface-2 text-left text-[11.5px] tracking-[0.06em] text-encre-3">
+          <thead className="border-b border-trait bg-surface-2 text-left text-[12.5px] tracking-[0.06em] text-encre-3">
             <tr>
               <EnTeteTri cle="nom" tri={tri} surTri={surTri}>
                 Client
@@ -229,7 +229,7 @@ function VueTableau({ clients, tri, surTri }) {
                       <span className="chiffres">{c.nbMarches}</span>
                     </Pilule>
                     {c.nbMarchesEnCours > 0 && c.nbMarchesEnCours < c.nbMarches && (
-                      <span className="text-[12px] text-encre-3">dont {c.nbMarchesEnCours} en cours</span>
+                      <span className="text-[13px] text-encre-3">dont {c.nbMarchesEnCours} en cours</span>
                     )}
                   </div>
                 </td>
@@ -273,7 +273,7 @@ function VueGrille({ clients }) {
               >
                 {c.nom}
               </Link>
-              <p className="chiffres mt-0.5 text-[12px] text-encre-3">{c.sigle ?? ' '}</p>
+              <p className="chiffres mt-0.5 text-[13px] text-encre-3">{c.sigle ?? ' '}</p>
             </div>
             <div className="relative z-10 -mt-1 -mr-1">
               <MenuClient client={c} />
@@ -530,7 +530,7 @@ export function PageClients() {
               )}
             >
               {f.libelle}
-              <span className={cx('chiffres text-[11.5px]', statut === f.cle ? 'text-cyan-texte' : 'text-encre-3')}>{compteurs[f.cle]}</span>
+              <span className={cx('chiffres text-[12.5px]', statut === f.cle ? 'text-cyan-texte' : 'text-encre-3')}>{compteurs[f.cle]}</span>
             </button>
           ))}
         </div>

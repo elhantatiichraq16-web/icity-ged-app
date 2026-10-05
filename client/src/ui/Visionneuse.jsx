@@ -104,7 +104,7 @@ export function Visionneuse({ url, titre }) {
           <Bouton variante="fantome" taille="icone" aria-label="Réduire" onClick={() => setZoom((z) => Math.max(0.5, z - 0.2))}>
             <ZoomOut className="size-4" aria-hidden />
           </Bouton>
-          <span className="chiffres w-12 text-center text-[12.5px] text-encre-3">{Math.round(zoom * 100)} %</span>
+          <span className="chiffres w-12 text-center text-[13px] text-encre-3">{Math.round(zoom * 100)} %</span>
           <Bouton variante="fantome" taille="icone" aria-label="Agrandir" onClick={() => setZoom((z) => Math.min(3, z + 0.2))}>
             <ZoomIn className="size-4" aria-hidden />
           </Bouton>

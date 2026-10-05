@@ -124,7 +124,7 @@ export function PaletteCommandes({ ouverte, surChangement }) {
               aria-activedescendant={commandes[actif] ? `palette-${actif}` : undefined}
               className="h-14 flex-1 bg-transparent text-[15px] text-encre placeholder:text-encre-3 focus:outline-none"
             />
-            {fonds.isFetching && <span className="text-[12px] text-encre-3">recherche…</span>}
+            {fonds.isFetching && <span className="text-[13px] text-encre-3">recherche…</span>}
             <kbd className="rounded border border-trait px-1.5 py-0.5 font-mono text-[11px] text-encre-3">Échap</kbd>
           </div>
 
@@ -136,7 +136,7 @@ export function PaletteCommandes({ ouverte, surChangement }) {
               groupePrecedent = c.groupe;
               return (
                 <li key={c.id}>
-                  {nouveauGroupe && <p className="px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-encre-3 uppercase">{c.groupe}</p>}
+                  {nouveauGroupe && <p className="px-3 pt-2 pb-1 text-[12px] font-semibold tracking-wide text-encre-3 uppercase">{c.groupe}</p>}
                   <div
                     id={`palette-${i}`}
                     role="option"
@@ -149,7 +149,7 @@ export function PaletteCommandes({ ouverte, surChangement }) {
                     <Icone className={cx('size-4 shrink-0', i === actif ? 'text-cyan-texte' : 'text-encre-3')} aria-hidden />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{c.libelle}</span>
-                      {c.detail && <span className="block truncate text-[12px] text-encre-3">{c.detail}</span>}
+                      {c.detail && <span className="block truncate text-[13px] text-encre-3">{c.detail}</span>}
                     </span>
                     {i === actif && <CornerDownLeft className="size-3.5 shrink-0 text-encre-3" aria-hidden />}
                   </div>

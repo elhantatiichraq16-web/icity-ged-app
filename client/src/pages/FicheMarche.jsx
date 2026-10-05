@@ -194,7 +194,7 @@ function EnTeteMarche({ m }) {
         {ORDRE_PHASES.map((p, i) => (
           <li key={p} className="flex-1 basis-32">
             <div className={cx('h-1.5 rounded-full', i <= etape ? 'bg-cyan' : 'bg-trait')} />
-            <span className={cx('mt-1.5 block text-[11.5px]', i === etape ? 'font-semibold text-encre' : 'text-encre-3')}>{PHASES[p].court}</span>
+            <span className={cx('mt-1.5 block text-[12.5px]', i === etape ? 'font-semibold text-encre' : 'text-encre-3')}>{PHASES[p].court}</span>
           </li>
         ))}
       </ol>
@@ -212,7 +212,7 @@ function EnTeteMarche({ m }) {
 function Info({ libelle, valeur, ton }) {
   return (
     <div>
-      <dt className="text-[12px] text-encre-3">{libelle}</dt>
+      <dt className="text-[13px] text-encre-3">{libelle}</dt>
       <dd className={cx('chiffres font-medium', ton === 'alerte' && 'text-alerte', ton === 'attente' && 'text-attente')}>{valeur}</dd>
     </div>
   );
@@ -281,7 +281,7 @@ function OngletDocuments({ m }) {
                     )}
                   >
                     {t.nom}
-                    <span className="chiffres text-[11.5px] opacity-75">{t.n}</span>
+                    <span className="chiffres text-[12.5px] opacity-75">{t.n}</span>
                   </button>
                 ))}
               </div>
@@ -307,8 +307,8 @@ function OngletDocuments({ m }) {
                     {d.statutOcr && d.statutOcr !== 'fait' && d.statutOcr !== 'non_necessaire' && (
                       <Badge ton={ETATS_OCR[d.statutOcr]?.ton ?? 'neutre'}>{ETATS_OCR[d.statutOcr]?.libelle ?? d.statutOcr}</Badge>
                     )}
-                    <span className="chiffres w-16 text-right text-[12.5px] text-encre-3">{d.pages ? `${d.pages} p.` : ''}</span>
-                    <span className="chiffres w-24 text-right text-[12.5px] text-encre-3">{d.dateDocument ? dateCourte(d.dateDocument) : '—'}</span>
+                    <span className="chiffres w-16 text-right text-[13px] text-encre-3">{d.pages ? `${d.pages} p.` : ''}</span>
+                    <span className="chiffres w-24 text-right text-[13px] text-encre-3">{d.dateDocument ? dateCourte(d.dateDocument) : '—'}</span>
                     <ChevronRight className="size-4 shrink-0 text-encre-3 group-hover:text-cyan-texte" aria-hidden />
                   </Link>
                 </li>
@@ -338,7 +338,7 @@ function OngletDocuments({ m }) {
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="font-medium">{p.nom}</p>
-                    <p className="text-[12.5px] text-encre-3">
+                    <p className="text-[13px] text-encre-3">
                       {pieces.length ? `${pieces.length} pièce(s) versée(s)` : manquante ? `Manquante — ${p.role}` : `Pas encore attendue — ${p.role}`}
                     </p>
                   </div>
@@ -348,7 +348,7 @@ function OngletDocuments({ m }) {
                         <li key={d.id}>
                           <Link
                             to={`/documents/${d.id}`}
-                            className="inline-flex max-w-72 items-center rounded-full bg-cyan-voile px-2.5 py-0.5 text-[12.5px] font-medium text-cyan-texte hover:underline"
+                            className="inline-flex max-w-72 items-center rounded-full bg-cyan-voile px-2.5 py-0.5 text-[13px] font-medium text-cyan-texte hover:underline"
                             title={d.titre}
                           >
                             <span className="truncate">{d.titre}</span>
@@ -479,7 +479,7 @@ function OngletInformations({ m }) {
 
         <div className="mt-2 flex items-center gap-3 sm:col-span-2">
           <AlertTriangle className="size-4 shrink-0 text-encre-3" aria-hidden />
-          <p className="flex-1 text-[12.5px] text-encre-3">
+          <p className="flex-1 text-[13px] text-encre-3">
             La phase (« {PHASES[m.phase].nom} ») se calcule d’après les pièces versées : elle ne se saisit jamais à la main.
           </p>
           {modifiable && (

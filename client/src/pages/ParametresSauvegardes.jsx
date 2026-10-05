@@ -74,7 +74,7 @@ export function ParametresSauvegardes() {
           La base <strong>et</strong> les fichiers, dans un même dossier daté. Les quatre dernières sont conservées ; au-delà,
           la plus ancienne part.
         </p>
-        <p className="mt-2 text-[12.5px] break-all text-encre-3">{racine}</p>
+        <p className="mt-2 text-[13px] break-all text-encre-3">{racine}</p>
 
         {/* Le même disque que l'original ne protège pas d'une panne : c'est
             le genre de chose qu'on découvre trop tard. */}
@@ -109,11 +109,11 @@ export function ParametresSauvegardes() {
                 <div className="min-w-0 flex-1">
                   <p className="chiffres truncate text-[13.5px] font-medium">{s.nom}</p>
                   {s.complete ? (
-                    <p className="mt-0.5 text-[12.5px] text-encre-3">
+                    <p className="mt-0.5 text-[13px] text-encre-3">
                       {dateHeure(s.date)} · {s.documents} documents · {s.marches} marchés · {s.fichiers} fichiers
                     </p>
                   ) : (
-                    <p className="mt-0.5 flex items-center gap-1.5 text-[12.5px] text-attente">
+                    <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-attente">
                       <TriangleAlert className="size-3.5" aria-hidden />
                       Incomplète : le fichier de contrôle manque, la copie a dû être interrompue.
                     </p>

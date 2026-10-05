@@ -159,7 +159,7 @@ export default async function routesCourriel(app) {
       ...(clientId ? { clientId: Number(clientId) } : {}),
       ...(marcheId ? { marcheId: Number(marcheId) } : {}),
       ...(statut ? { statutRattachement: String(statut) } : {}),
-      ...(q ? { OR: [{ objet: { contains: String(q) } }, { expediteur: { contains: String(q) } }, { corpsTexte: { contains: String(q) } }] } : {}),
+      ...(q ? { OR: [{ objet: { contains: String(q), mode: 'insensitive' } }, { expediteur: { contains: String(q), mode: 'insensitive' } }, { corpsTexte: { contains: String(q), mode: 'insensitive' } }] } : {}),
     };
 
     const [total, mails, compteurs] = await Promise.all([
@@ -195,7 +195,7 @@ export default async function routesCourriel(app) {
       ...(clientId ? { clientId: Number(clientId) } : {}),
       ...(marcheId ? { marcheId: Number(marcheId) } : {}),
       ...(statut ? { statutRattachement: String(statut) } : {}),
-      ...(q ? { OR: [{ objet: { contains: String(q) } }, { expediteur: { contains: String(q) } }, { corpsTexte: { contains: String(q) } }] } : {}),
+      ...(q ? { OR: [{ objet: { contains: String(q), mode: 'insensitive' } }, { expediteur: { contains: String(q), mode: 'insensitive' } }, { corpsTexte: { contains: String(q), mode: 'insensitive' } }] } : {}),
     };
 
     // Les fils de la page demandée, les plus récents d'abord. On passe par

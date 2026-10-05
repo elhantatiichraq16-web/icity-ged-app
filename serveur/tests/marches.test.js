@@ -265,3 +265,27 @@ describe('API des clients', () => {
     expect(r.body).toContain('Trésorerie Générale du Royaume;TGR;1;1;1;Marchés en cours;');
   });
 });
+
+describe('export et recherche', () => {
+  it('l’export CSV des marchés porte le montant TTC', async () => {
+    const m = await creerMarche('31/2016', { montantTtc: 1250000.5 });
+    await poser(m, 'OS');
+    const requete = en(app, await connecter(app, (await creerUtilisateur('lecteur')).email));
+    const r = await requete('GET', '/api/marches/export.csv?nature=marches');
+    expect(r.statusCode).toBe(200);
+    expect(r.body).toContain('Montant TTC');
+    expect(r.body).toMatch(/31\/2016;.*;1250000[.,]5;/);
+  });
+
+  it('cherche sans tenir compte des majuscules', async () => {
+    const m = await creerMarche('MAR202200027', { objet: 'Vidéosurveillance' });
+    await poser(m, 'OS');
+    const requete = en(app, await connecter(app, (await creerUtilisateur('lecteur')).email));
+    expect((await requete('GET', '/api/marches?q=mar2022')).json()).toHaveLength(1);
+    expect((await requete('GET', '/api/marches?q=VIDÉO')).json()).toHaveLength(1);
+    expect((await requete('GET', '/api/documents?q=os de mar')).json().total).toBe(1);
+    expect((await requete('GET', '/api/documents?q=tgr')).json().total).toBe(0);
+    expect((await requete('GET', '/api/documents?q=trésorerie')).json().total).toBe(1);
+    expect((await requete('GET', '/api/recherche?q=mar2022')).json().marches).toHaveLength(1);
+  });
+});

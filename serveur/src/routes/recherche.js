@@ -27,7 +27,7 @@ export default async function routesRecherche(app) {
     // pas de texte OCR, mais c'est souvent eux que l'on veut ouvrir.
     const marches = String(q).trim().length >= 2
       ? await db.marche.findMany({
-          where: { OR: [{ reference: { contains: String(q) } }, { objet: { contains: String(q) } }, { client: { nom: { contains: String(q) } } }] },
+          where: { OR: [{ reference: { contains: String(q), mode: 'insensitive' } }, { objet: { contains: String(q), mode: 'insensitive' } }, { client: { nom: { contains: String(q), mode: 'insensitive' } } }] },
           include: { client: true },
           take: 5,
         })

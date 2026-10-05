@@ -145,9 +145,9 @@ export function EcrireMail({ ouverte, surFermer, repondA = null, clientInitial =
                 className="h-8 min-w-40 flex-1 bg-transparent px-1.5 text-sm focus:outline-none"
               />
             </div>
-            {erreurs.a && <p className="mt-1 text-[12.5px] text-alerte">{erreurs.a}</p>}
+            {erreurs.a && <p className="mt-1 text-[13px] text-alerte">{erreurs.a}</p>}
             {suggestions.length > 0 && a.length === 0 && (
-              <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12.5px] text-encre-3">
+              <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[13px] text-encre-3">
                 Déjà en contact :
                 {suggestions.map((adresse) => (
                   <button key={adresse} type="button" onClick={() => ajouterDestinataire(adresse)} className="rounded border border-trait px-1.5 py-0.5 hover:border-trait-fort">
@@ -175,7 +175,7 @@ export function EcrireMail({ ouverte, surFermer, repondA = null, clientInitial =
                 erreurs.texte ? 'border-alerte' : 'border-trait focus:border-cyan',
               )}
             />
-            {erreurs.texte && <p className="mt-1 text-[12.5px] text-alerte">{erreurs.texte}</p>}
+            {erreurs.texte && <p className="mt-1 text-[13px] text-alerte">{erreurs.texte}</p>}
           </div>
 
           {/* Le rattachement : l'échange rejoint le dossier du marché. */}
@@ -304,7 +304,7 @@ function PiecesJointes({ documentIds, surChangement, ouvertChercheur, surCherche
                       <Paperclip className="size-3.5 shrink-0 text-encre-3" aria-hidden />
                       <span className="min-w-0 flex-1 truncate">{d.titre}</span>
                       {d.marche && <Badge ton="cyan">{d.marche.reference}</Badge>}
-                      {dejaLa && <span className="text-[12px]">joint</span>}
+                      {dejaLa && <span className="text-[13px]">joint</span>}
                     </button>
                   </li>
                 );

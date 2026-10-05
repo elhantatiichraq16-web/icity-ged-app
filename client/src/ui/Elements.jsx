@@ -18,7 +18,7 @@ export function EnTetePage({ titre, description, actions, surtitre }) {
   return (
     <header className="mb-7 flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
-        {surtitre && <p className="mb-1 text-[12px] font-semibold tracking-[0.08em] text-cyan-texte uppercase">{surtitre}</p>}
+        {surtitre && <p className="mb-1 text-[13px] font-semibold tracking-[0.08em] text-cyan-texte uppercase">{surtitre}</p>}
         <h1 className="text-[28px] leading-tight font-semibold sm:text-[32px]">{titre}</h1>
         {description && <p className="mt-1.5 max-w-2xl text-encre-2">{description}</p>}
       </div>
@@ -38,7 +38,7 @@ const TONS_BADGE = {
 
 export function Badge({ ton = 'neutre', className, children }) {
   return (
-    <span className={cx('inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[12px] font-semibold whitespace-nowrap', TONS_BADGE[ton], className)}>
+    <span className={cx('inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[13px] font-semibold whitespace-nowrap', TONS_BADGE[ton], className)}>
       {children}
     </span>
   );

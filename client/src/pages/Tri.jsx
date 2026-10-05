@@ -126,7 +126,7 @@ function LignePiece({ piece: p, affaires, types }) {
             <Link to={`/documents/${p.id}`} className="font-semibold hover:text-cyan-texte hover:underline">
               {p.titre}
             </Link>
-            <p className="mt-1 flex flex-wrap items-center gap-2 text-[12.5px] text-encre-3">
+            <p className="mt-1 flex flex-wrap items-center gap-2 text-[13px] text-encre-3">
               {!p.marche && <Badge ton="attente">sans marché</Badge>}
               {!p.type && <Badge ton="attente">sans type</Badge>}
               {p.marche && <span>{p.marche.reference}</span>}
@@ -257,7 +257,7 @@ export function PageAVerifier() {
                   <h2 className="mb-1 flex items-center gap-2 font-semibold">
                     <FileQuestion className="size-4 text-encre-3" aria-hidden /> Attestations sans marché <Badge ton="attente">{d.attestations.length}</Badge>
                   </h2>
-                  <p className="mb-3 text-[12.5px] text-encre-3">
+                  <p className="mb-3 text-[13px] text-encre-3">
                     Leur numéro de marché ne se lit pas. Rattachez-les, ou laissez sans marché celles dont l’affaire n’a jamais été numérisée : elles ne reviendront plus.
                   </p>
                   <ul className="grid gap-3">
@@ -293,7 +293,7 @@ function Section({ titre, icone: Icone, nombre, explication, children }) {
         <h2 className="flex items-center gap-2 font-semibold">
           <Icone className="size-4 text-encre-3" aria-hidden /> {titre} <Badge ton="attente">{nombre}</Badge>
         </h2>
-        {explication && <p className="mt-1 text-[12.5px] text-encre-3">{explication}</p>}
+        {explication && <p className="mt-1 text-[13px] text-encre-3">{explication}</p>}
       </div>
       <ul className="divide-y divide-trait">{children}</ul>
     </Carte>
@@ -330,7 +330,7 @@ function SectionDoublons({ doublons }) {
             {lien(p.a)} <span className="text-encre-3">et</span> {lien(p.b)}{' '}
             <Badge ton="attente">{p.score} %</Badge>
           </p>
-          {p.raisons.length > 0 && <p className="text-[12.5px] text-encre-3">{p.raisons.join(' · ')}</p>}
+          {p.raisons.length > 0 && <p className="text-[13px] text-encre-3">{p.raisons.join(' · ')}</p>}
           <div className="flex flex-wrap gap-2">
             <Bouton taille="petit" variante="secondaire" disabled={trancher.isPending} onClick={() => trancher.mutate({ id: p.id, corps: { decision: 'gardes' } })}>
               Garder les deux

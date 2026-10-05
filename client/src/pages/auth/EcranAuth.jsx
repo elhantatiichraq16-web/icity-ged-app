@@ -39,7 +39,7 @@ export function EcranAuth({ titre, sousTitre, children }) {
         <div className="relative max-w-[30rem]">
           <div className="mb-10 flex items-center gap-3">
             <Logo className="h-[59px] w-[140px]" couleur="#fff" />
-            <span className="rounded-[3px] border border-white/40 px-2.5 py-1 text-[12.5px] font-bold tracking-[0.12em] text-white/90">GED</span>
+            <span className="rounded-[3px] border border-white/40 px-2.5 py-1 text-[13px] font-bold tracking-[0.12em] text-white/90">GED</span>
           </div>
           <h1 className="mb-5 font-titre text-[clamp(32px,3.4vw,44px)] leading-[1.1] font-semibold text-balance text-white">
             Gestion documentaire des marchés
@@ -70,7 +70,7 @@ export function EcranAuth({ titre, sousTitre, children }) {
           <h2 className="mb-1.5 text-[28px] font-semibold">{titre}</h2>
           {sousTitre && <p className="mb-8 text-sm text-encre-2">{sousTitre}</p>}
           {children}
-          <footer className="mt-9 border-t border-trait pt-5 text-[11.5px] text-encre-3">
+          <footer className="mt-9 border-t border-trait pt-5 text-[12.5px] text-encre-3">
             Propulsé par <strong className="font-bold tracking-[0.04em] text-bordeaux">ABA TECHNOLOGY</strong> — Casablanca, Maroc
           </footer>
         </div>

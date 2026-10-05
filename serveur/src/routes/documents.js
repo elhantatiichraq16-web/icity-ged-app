@@ -125,10 +125,11 @@ export default async function routesDocuments(app) {
       ...(q
         ? {
             OR: [
-              { titre: { contains: String(q) } },
-              { nomOrigine: { contains: String(q) } },
-              { marche: { reference: { contains: String(q) } } },
-              { client: { nom: { contains: String(q) } } },
+              // Sans tenir compte des majuscules : « tgr » trouve « TGR ».
+              { titre: { contains: String(q), mode: 'insensitive' } },
+              { nomOrigine: { contains: String(q), mode: 'insensitive' } },
+              { marche: { reference: { contains: String(q), mode: 'insensitive' } } },
+              { client: { nom: { contains: String(q), mode: 'insensitive' } } },
             ],
           }
         : {}),

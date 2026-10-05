@@ -22,7 +22,7 @@ import { useToasts } from '../ui/Toasts.jsx';
 import { useSession } from '../auth/session.jsx';
 import { Visionneuse } from '../ui/Visionneuse.jsx';
 import { CircuitDocument } from './CircuitDocument.jsx';
-import { useArchivage } from './Archives.jsx';
+import { RappelArchives, useArchivage } from './Archives.jsx';
 import { ModalePiece } from './ModifierPiece.jsx';
 
 /** L'état de lecture d'un document, en clair. */
@@ -143,6 +143,9 @@ export function PageDocuments() {
         description="Toutes les pièces du fonds. Ouvrez-en une pour la lire, avec son texte à côté."
         actions={d ? <Badge ton="cyan">{d.total} documents</Badge> : null}
       />
+
+      {/* Liste vide sans filtre : le fonds précédent est aux archives. */}
+      {d && d.total === 0 && !parametres.toString().replace(/(^|&)page=\d+/, '') && <RappelArchives className="mb-5" />}
 
       <Carte className="mb-5 flex flex-wrap items-center gap-3 p-4">
         <form
@@ -283,7 +286,7 @@ export function PageDocuments() {
             <table className="w-full text-sm">
               <caption className="sr-only">Documents du fonds</caption>
               <thead>
-                <tr className="border-b border-trait text-left text-[12px] tracking-wide text-encre-3 uppercase">
+                <tr className="border-b border-trait text-left text-[13px] tracking-wide text-encre-3 uppercase">
                   {peutCocher && (
                     <th scope="col" className="w-10 px-3 py-3">
                       <input
@@ -571,7 +574,7 @@ export function PageFicheDocument() {
           <Carte className="p-5">
             <h2 className="mb-3 font-semibold">Texte du document</h2>
             {d.texteOcr ? (
-              <pre className={cx('max-h-[40vh] overflow-auto rounded-lg bg-surface-2 p-3 text-[12.5px] leading-relaxed whitespace-pre-wrap')}>{d.texteOcr}</pre>
+              <pre className={cx('max-h-[40vh] overflow-auto rounded-lg bg-surface-2 p-3 text-[13px] leading-relaxed whitespace-pre-wrap')}>{d.texteOcr}</pre>
             ) : d.statutOcr === 'en_attente' ? (
               <Alerte ton="attente" titre="Pas encore lu">
                 Ce document est un scan : son texte sera lu par l’OCR (Tesseract), un document à la fois.

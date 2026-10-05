@@ -47,7 +47,7 @@ export class Rattrapage extends Component {
           {/* Le message technique reste accessible sans encombrer : replié. */}
           <details className="mb-5 text-left">
             <summary className="cursor-pointer text-[13px] text-encre-3 hover:text-encre-2">Détail technique</summary>
-            <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-surface-2 p-3 text-[12px] whitespace-pre-wrap text-encre-2">
+            <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-surface-2 p-3 text-[13px] whitespace-pre-wrap text-encre-2">
               {String(erreur?.message ?? erreur)}
             </pre>
           </details>

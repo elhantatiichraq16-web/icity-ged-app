@@ -19,18 +19,18 @@ function Enveloppe({ id, libelle, aide, erreur, children, className, facultatif,
   return (
     <div className={cx('grid gap-1.5', enLigne && 'sm:grid-cols-[10.5rem_minmax(0,1fr)] sm:gap-x-4', className)}>
       {libelle && (
-        <label htmlFor={id} className={cx('text-[12.5px] font-semibold text-encre-2', enLigne && 'sm:pt-3')}>
+        <label htmlFor={id} className={cx('text-[13px] font-semibold text-encre-2', enLigne && 'sm:pt-3')}>
           {libelle}
           {facultatif && <span className="font-normal text-encre-3"> (facultatif)</span>}
         </label>
       )}
       {children}
       {erreur ? (
-        <p id={`${id}-erreur`} className={cx('text-[12.5px] font-medium text-alerte-texte', enLigne && 'sm:col-start-2')}>
+        <p id={`${id}-erreur`} className={cx('text-[13px] font-medium text-alerte-texte', enLigne && 'sm:col-start-2')}>
           {erreur}
         </p>
       ) : aide ? (
-        <p id={`${id}-aide`} className={cx('text-[12.5px] text-encre-3', enLigne && 'sm:col-start-2')}>
+        <p id={`${id}-aide`} className={cx('text-[13px] text-encre-3', enLigne && 'sm:col-start-2')}>
           {aide}
         </p>
       ) : null}

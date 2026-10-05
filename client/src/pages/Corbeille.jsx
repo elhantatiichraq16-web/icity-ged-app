@@ -66,7 +66,7 @@ export function PageCorbeille() {
                 <li key={d.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
                   <Trash2 className="size-4 shrink-0 text-encre-3" aria-hidden />
                   <span className="min-w-0 flex-1 truncate">{d.titre}</span>
-                  <span className="text-[12.5px] text-encre-3">écartée {depuis(d.supprimeLe)}</span>
+                  <span className="text-[13px] text-encre-3">écartée {depuis(d.supprimeLe)}</span>
                   {/* Sous une semaine, l'alerte : après, la pièce est perdue. */}
                   <Badge ton={d.joursRestants <= 7 ? 'alerte' : 'neutre'}>{d.joursRestants} jours restants</Badge>
                   <Bouton

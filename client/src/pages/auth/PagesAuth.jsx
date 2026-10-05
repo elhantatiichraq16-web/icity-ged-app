@@ -83,7 +83,7 @@ export function PageConnexion() {
           Se connecter
         </Bouton>
       </form>
-      <p className="mt-6 text-[12.5px] text-encre-3">Pas de compte ? Les accès sont créés par l'administrateur, sur invitation.</p>
+      <p className="mt-6 text-[13px] text-encre-3">Pas de compte ? Les accès sont créés par l'administrateur, sur invitation.</p>
     </EcranAuth>
   );
 }

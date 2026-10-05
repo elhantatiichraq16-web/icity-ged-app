@@ -249,14 +249,14 @@ function Conversation({ conversation: c, deplie, surDeplier, ouvert, surOuvrir }
             <DirectionIcone direction={dernier.direction} />
           )}
           <span className="min-w-0 flex-1 truncate font-medium">{c.objet}</span>
-          {plusieurs && <span className="shrink-0 rounded-full bg-surface-2 px-1.5 text-[12px] text-encre-2">{c.messages}</span>}
+          {plusieurs && <span className="shrink-0 rounded-full bg-surface-2 px-1.5 text-[13px] text-encre-2">{c.messages}</span>}
           {c.pieces > 0 && (
-            <span className="flex items-center gap-0.5 text-[12px] text-encre-3">
+            <span className="flex items-center gap-0.5 text-[13px] text-encre-3">
               <Paperclip className="size-3.5" aria-hidden /> {c.pieces}
             </span>
           )}
         </span>
-        <span className="mt-0.5 flex flex-wrap items-center gap-2 text-[12.5px] text-encre-3">
+        <span className="mt-0.5 flex flex-wrap items-center gap-2 text-[13px] text-encre-3">
           <span className="truncate">{c.apercu || dernier.expediteur}</span>
           <span>· {dateHeure(c.dernierLe)}</span>
           {c.client ? <Badge ton="cyan">{c.client.nom}</Badge> : <Badge ton="attente">à rattacher</Badge>}
@@ -370,7 +370,7 @@ function Message({ id, surRepondre }) {
 
       {m.piecesJointes.length > 0 && (
         <div className="border-b border-trait px-5 py-3">
-          <h3 className="mb-2 text-[12px] font-semibold tracking-wide text-encre-3 uppercase">Pièces jointes</h3>
+          <h3 className="mb-2 text-[13px] font-semibold tracking-wide text-encre-3 uppercase">Pièces jointes</h3>
           <ul className="flex flex-wrap gap-2">
             {m.piecesJointes.map((p) => (
               <li key={p.id}>
@@ -433,7 +433,7 @@ export function PageArrivees() {
                 <Badge ton={d.statutOcr === 'en_attente' ? 'attente' : d.statutOcr === 'echec' ? 'alerte' : 'ok'}>
                   {d.statutOcr === 'en_attente' ? 'lecture en attente' : d.statutOcr === 'en_cours' ? 'lecture en cours…' : 'texte lu'}
                 </Badge>
-                <span className="text-[12.5px] text-encre-3">{dateHeure(d.creeLe)}</span>
+                <span className="text-[13px] text-encre-3">{dateHeure(d.creeLe)}</span>
               </li>
             ))}
           </ul>

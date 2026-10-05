@@ -1,6 +1,6 @@
 import { cx } from './cx.js';
 
-const TAILLES = { petit: 'size-8 text-[12px]', normal: 'size-10 text-sm', grand: 'size-20 text-2xl' };
+const TAILLES = { petit: 'size-8 text-[13px]', normal: 'size-10 text-sm', grand: 'size-20 text-2xl' };
 
 /** Les initiales d'un nom : « Ichrak Elhantati » → « IE ». */
 export function initiales(nom = '') {

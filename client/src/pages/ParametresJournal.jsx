@@ -153,11 +153,11 @@ export function ParametresJournal() {
                     {l.objetType && l.objetId ? ` · ${l.objetType} #${l.objetId}` : ''}
                     {l.commentaire ? ` · ${l.commentaire}` : ''}
                   </span>
-                  <span className="text-[12.5px] text-encre-3">{dateHeure(l.creeLe)}</span>
+                  <span className="text-[13px] text-encre-3">{dateHeure(l.creeLe)}</span>
                 </button>
 
                 {ouverte === l.id && (l.avant || l.apres) && (
-                  <div className="grid gap-3 border-t border-trait bg-surface-2 px-5 py-3 text-[12.5px] sm:grid-cols-2">
+                  <div className="grid gap-3 border-t border-trait bg-surface-2 px-5 py-3 text-[13px] sm:grid-cols-2">
                     <div>
                       <p className="mb-1 font-semibold text-encre-3">Avant</p>
                       <pre className="whitespace-pre-wrap">{JSON.stringify(l.avant, null, 1) ?? '—'}</pre>

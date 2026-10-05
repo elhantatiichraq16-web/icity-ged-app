@@ -14,6 +14,7 @@ import { api } from '../api.js';
 import { useSession } from '../auth/session.jsx';
 import { depuis } from '../format.js';
 import { Alerte, Carte, EnTetePage, EtatVide, SqueletteLignes } from '../ui/Elements.jsx';
+import { RappelArchives } from './Archives.jsx';
 import { cx } from '../ui/cx.js';
 
 Chart.register(ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip);
@@ -69,6 +70,9 @@ export function PageTableauDeBord() {
         titre={`Bonjour, ${prenom}`}
         description="L’état du fonds : les affaires, ce qui manque à leurs dossiers, et ce qui demande votre attention."
       />
+
+      {/* Un tableau de bord à zéro après l'archivage : on rappelle où est le fonds. */}
+      {tuiles.marchesTotal === 0 && tuiles.documents === 0 && <RappelArchives className="mb-5" />}
 
       {/* ── Tuiles ── */}
       <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -245,7 +249,7 @@ export function PageTableauDeBord() {
                   <li key={a.id} className="text-[13px]">
                     <span className="font-medium text-encre">{a.par}</span>{' '}
                     <span className="text-encre-2">{a.action.replace(/\./g, ' · ').replace(/_/g, ' ')}</span>
-                    <span className="block text-[12px] text-encre-3">
+                    <span className="block text-[13px] text-encre-3">
                       {depuis(a.creeLe)}
                       {a.commentaire ? ` · ${a.commentaire}` : ''}
                     </span>
@@ -281,7 +285,7 @@ function Tuile({ icone: Icone, titre, chiffre, note, ton, vers }) {
         <span className="text-[13px] font-medium text-encre-2">{titre}</span>
       </div>
       <p className="chiffres text-[32px] leading-none font-semibold">{chiffre}</p>
-      {note && <p className="mt-1.5 text-[12.5px] text-encre-3">{note}</p>}
+      {note && <p className="mt-1.5 text-[13px] text-encre-3">{note}</p>}
     </Carte>
   );
   return vers ? <Link to={vers}>{contenu}</Link> : contenu;

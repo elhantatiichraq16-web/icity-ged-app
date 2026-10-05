@@ -103,7 +103,7 @@ function Identite() {
               </Bouton>
             )}
           </div>
-          <p className="text-[12.5px] text-encre-3">PNG, JPEG ou WEBP, 2 Mo au plus.</p>
+          <p className="text-[13px] text-encre-3">PNG, JPEG ou WEBP, 2 Mo au plus.</p>
           <input
             ref={fichier}
             type="file"
@@ -234,7 +234,7 @@ function DeuxFacteurs() {
           <form onSubmit={confirmer} noValidate className="grid gap-5">
             <div className="grid place-items-center gap-3 rounded-xl bg-surface-2 p-5">
               <img src={activation.qrCode} alt="QR code à scanner avec l’application d’authentification" className="size-[200px] rounded-lg bg-white p-2" />
-              <p className="text-center text-[12.5px] text-encre-3">
+              <p className="text-center text-[13px] text-encre-3">
                 Scan impossible ? Saisissez cette clé : <span className="chiffres break-all text-encre select-all">{activation.secret}</span>
               </p>
             </div>
@@ -337,7 +337,7 @@ function Sessions({ profil }) {
                     {appareil(s.agent)}
                     {s.courante && <Badge ton="cyan">Cet appareil</Badge>}
                   </p>
-                  <p className="text-[12.5px] text-encre-3" title={`Ouverte le ${dateHeure(s.creeLe)}`}>
+                  <p className="text-[13px] text-encre-3" title={`Ouverte le ${dateHeure(s.creeLe)}`}>
                     {s.ip} · actif {depuis(s.derniereActivite)}
                   </p>
                 </div>

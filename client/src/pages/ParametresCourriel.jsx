@@ -163,7 +163,7 @@ export function ParametresCourriel() {
         {essai && (
           <Alerte ton={essai.ok ? (essai.dossierTrouve ? 'ok' : 'attente') : 'alerte'} className="mt-5" titre={essai.ok ? 'Connexion établie' : 'Connexion refusée'}>
             {essai.message}
-            {essai.dossiers && !essai.dossierTrouve && <span className="mt-1 block text-[12px]">Libellés trouvés : {essai.dossiers.slice(0, 12).join(', ')}…</span>}
+            {essai.dossiers && !essai.dossierTrouve && <span className="mt-1 block text-[13px]">Libellés trouvés : {essai.dossiers.slice(0, 12).join(', ')}…</span>}
           </Alerte>
         )}
       </Carte>
@@ -199,7 +199,7 @@ export function ParametresCourriel() {
               )}
               {compte.derniereReleveDetail?.erreur && <Alerte ton="alerte">{compte.derniereReleveDetail.erreur}</Alerte>}
               {compte.derniereReleveDetail?.debut && (
-                <p className="text-[12px] text-encre-3">Commencée le {dateHeure(compte.derniereReleveDetail.debut)}</p>
+                <p className="text-[13px] text-encre-3">Commencée le {dateHeure(compte.derniereReleveDetail.debut)}</p>
               )}
             </dl>
           ) : (

@@ -15,7 +15,7 @@ import { Avatar } from '../ui/Avatar.jsx';
 import { cx } from '../ui/cx.js';
 import { EtatVide } from '../ui/Elements.jsx';
 import { Logo, Pictogramme } from '../ui/Logo.jsx';
-import { entreesVisibles } from './navigation.js';
+import { groupesVisibles } from './navigation.js';
 import { PaletteCommandes } from './PaletteCommandes.jsx';
 import { useTheme } from './theme.js';
 
@@ -126,13 +126,23 @@ function ContenuBarre({ replie, droits }) {
         )}
       </Link>
       <nav aria-label="Navigation principale" className="flex-1 overflow-y-auto px-3 py-3">
-        <ul className="grid gap-1">
-          {entreesVisibles(droits).map((e) => (
-            <li key={e.chemin}>
-              <EntreeNavigation entree={e} replie={replie} />
-            </li>
-          ))}
-        </ul>
+        {groupesVisibles(droits).map(({ groupe, entrees }, i) => (
+          <div key={groupe} className={cx(i > 0 && 'mt-3')}>
+            {/* Repliée, la barre n'a pas la place d'un titre : un trait le remplace. */}
+            {replie ? (
+              i > 0 && <div aria-hidden className="mx-2 mb-3 border-t border-trait" />
+            ) : (
+              <p className="mb-1 px-3 text-[12.5px] font-semibold tracking-[0.08em] text-encre-3 uppercase">{groupe}</p>
+            )}
+            <ul className="grid gap-0.5" aria-label={groupe}>
+              {entrees.map((e) => (
+                <li key={e.chemin}>
+                  <EntreeNavigation entree={e} replie={replie} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </nav>
     </>
   );
@@ -147,7 +157,7 @@ function EntreeNavigation({ entree, replie }) {
       end={entree.chemin === '/'}
       className={({ isActive }) =>
         cx(
-          'group relative flex h-10 items-center gap-3 rounded-[10px] px-3 text-[14px] font-medium transition-colors',
+          'group relative flex h-9 items-center gap-3 rounded-[10px] px-3 text-[14px] font-medium transition-colors',
           replie && 'justify-center px-0',
           isActive ? 'bg-cyan-voile text-cyan-texte' : 'text-encre-2 hover:bg-surface-2 hover:text-encre',
         )
@@ -169,7 +179,7 @@ function EntreeNavigation({ entree, replie }) {
     <Tooltip.Root>
       <Tooltip.Trigger asChild>{lien}</Tooltip.Trigger>
       <Tooltip.Portal>
-        <Tooltip.Content side="right" sideOffset={10} className="z-50 animate-apparition rounded-md bg-encre px-2.5 py-1.5 text-[12.5px] font-medium text-surface">
+        <Tooltip.Content side="right" sideOffset={10} className="z-50 animate-apparition rounded-md bg-encre px-2.5 py-1.5 text-[13px] font-medium text-surface">
           {entree.libelle}
         </Tooltip.Content>
       </Tooltip.Portal>
@@ -270,21 +280,21 @@ function MenuUtilisateur() {
         <Avatar utilisateur={utilisateur} taille="petit" />
         <span className="hidden text-left leading-tight sm:block">
           <span className="block max-w-40 truncate text-[13.5px] font-semibold text-encre">{utilisateur.nom}</span>
-          <span className="block text-[12px] text-encre-3">{utilisateur.roleNom}</span>
+          <span className="block text-[13px] text-encre-3">{utilisateur.roleNom}</span>
         </span>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content align="end" sideOffset={8} className="z-50 w-64 animate-apparition rounded-xl border border-trait bg-surface p-1.5 shadow-haute">
           <div className="px-2.5 pt-1.5 pb-2.5">
             <p className="truncate font-semibold">{utilisateur.nom}</p>
-            <p className="truncate text-[12.5px] text-encre-3">{utilisateur.email}</p>
+            <p className="truncate text-[13px] text-encre-3">{utilisateur.email}</p>
           </div>
           <DropdownMenu.Separator className="my-1 h-px bg-trait" />
           <DropdownMenu.Item className={element} onSelect={() => naviguer('/profil')}>
             <User className="size-4 text-encre-3" aria-hidden /> Mon profil
           </DropdownMenu.Item>
           <DropdownMenu.Separator className="my-1 h-px bg-trait" />
-          <DropdownMenu.Label className="px-2.5 py-1 text-[11.5px] font-semibold tracking-wide text-encre-3 uppercase">Thème</DropdownMenu.Label>
+          <DropdownMenu.Label className="px-2.5 py-1 text-[12.5px] font-semibold tracking-wide text-encre-3 uppercase">Thème</DropdownMenu.Label>
           <DropdownMenu.RadioGroup value={theme} onValueChange={setTheme}>
             {[
               ['clair', 'Clair', Sun],

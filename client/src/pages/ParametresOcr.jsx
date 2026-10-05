@@ -123,7 +123,7 @@ export function ParametresOcr() {
                   <Badge ton={n > 0 ? e.ton : 'neutre'}>{n}</Badge>
                   <span className="text-sm font-medium">{e.libelle}</span>
                 </dt>
-                <dd className="mt-1 text-[12.5px] text-encre-3">{e.aide}</dd>
+                <dd className="mt-1 text-[13px] text-encre-3">{e.aide}</dd>
               </div>
             );
           })}

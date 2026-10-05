@@ -145,7 +145,7 @@ function Utilisateurs() {
           <table className="w-full text-sm">
             <caption className="sr-only">Utilisateurs de l’application</caption>
             <thead>
-              <tr className="border-b border-trait text-left text-[12px] tracking-wide text-encre-3 uppercase">
+              <tr className="border-b border-trait text-left text-[13px] tracking-wide text-encre-3 uppercase">
                 <th scope="col" className="px-5 py-3 font-semibold">Utilisateur</th>
                 <th scope="col" className="px-3 py-3 font-semibold">Rôle</th>
                 <th scope="col" className="px-3 py-3 font-semibold">État</th>
@@ -167,7 +167,7 @@ function Utilisateurs() {
                           <p className="truncate font-semibold">
                             {u.nom} {soiMeme && <span className="font-normal text-encre-3">(vous)</span>}
                           </p>
-                          <p className="truncate text-[12.5px] text-encre-3">{u.email}</p>
+                          <p className="truncate text-[13px] text-encre-3">{u.email}</p>
                         </div>
                       </div>
                     </td>

@@ -26,7 +26,7 @@ import { db } from '../db.js';
 import { ErreurHttp, introuvable, valider } from '../erreurs.js';
 import { exiger, exigerConnexion } from '../plugins/authentification.js';
 import { doublonsEnAttente } from '../services/arbitrage-doublons.js';
-import { EN_COURS } from '../services/archivage.js';
+import { EN_COURS, PIECES_ARCHIVEES } from '../services/archivage.js';
 import { journaliser } from '../services/journal.js';
 import { codesParMarche, piecesParMarche } from '../services/phase-marche.js';
 import { nomFichier, versCsv } from '../services/export-csv.js';
@@ -172,10 +172,10 @@ export default async function routesMarches(app) {
         ...(q
           ? {
               OR: [
-                { reference: { contains: String(q) } },
-                { objet: { contains: String(q) } },
-                { ville: { contains: String(q) } },
-                { client: { nom: { contains: String(q) } } },
+                { reference: { contains: String(q), mode: 'insensitive' } },
+                { objet: { contains: String(q), mode: 'insensitive' } },
+                { ville: { contains: String(q), mode: 'insensitive' } },
+                { client: { nom: { contains: String(q), mode: 'insensitive' } } },
               ],
             }
           : {}),
@@ -222,7 +222,7 @@ export default async function routesMarches(app) {
         { cle: 'ville', titre: 'Ville' },
         { cle: 'phase', titre: 'Phase' },
         { cle: 'statutAffaire', titre: 'Statut' },
-        { cle: 'montant', titre: 'Montant' },
+        { cle: 'montant', titre: 'Montant TTC' },
         { cle: 'documents', titre: 'Documents' },
         { cle: 'manquantes', titre: 'Pièces manquantes' },
       ],
@@ -233,7 +233,7 @@ export default async function routesMarches(app) {
         ville: m.ville ?? '',
         phase: m.appelOffres ? "Appel d'offres" : (m.phase ?? ''),
         statutAffaire: m.statutAffaire ?? '',
-        montant: m.montant ?? '',
+        montant: m.montantTtc ?? '',
         documents: m.nbDocuments ?? 0,
         manquantes: (m.manquantes ?? []).join(', '),
       })),
@@ -418,6 +418,27 @@ export default async function routesMarches(app) {
       return { modifies: vises.length };
     });
   }
+
+  /**
+   * Ce que contiennent les archives, en deux chiffres.
+   *
+   * Les écrans vides le rappellent : après un archivage de fin d'exercice,
+   * une liste vide ne doit pas faire croire que tout a été perdu.
+   */
+  app.get('/api/archives/resume', async (requete) => {
+    const [marches, documents] = await Promise.all([
+      db.marche.count({ where: { archiveLe: { not: null } } }),
+      db.document.count({
+        where: {
+          supprimeLe: null,
+          AND: [PIECES_ARCHIVEES],
+          // On ne compte que ce qu'on a le droit de voir, comme partout.
+          OR: [{ confidentialite: { in: confidentialitesVisibles(requete.utilisateur.role.code) } }, { verseParId: requete.utilisateur.id }],
+        },
+      }),
+    ]);
+    return { marches, documents };
+  });
 
   // ── Clients ───────────────────────────────────────────────────
   /**

@@ -84,7 +84,7 @@ export function CircuitDocument({ documentId }) {
           {ORDRE_ETATS.filter((e) => e !== 'archive').map((e, i) => (
             <li key={e} className="min-w-16 flex-1">
               <div className={cx('h-1.5 rounded-full', c.etat === 'a_corriger' && i > 0 ? 'bg-alerte-voile' : i <= etape ? 'bg-cyan' : 'bg-trait')} />
-              <span className={cx('mt-1 block text-[10.5px]', i === etape ? 'font-semibold text-encre' : 'text-encre-3')}>{ETATS[e].nom}</span>
+              <span className={cx('mt-1 block text-[12px]', i === etape ? 'font-semibold text-encre' : 'text-encre-3')}>{ETATS[e].nom}</span>
             </li>
           ))}
         </ol>
@@ -96,7 +96,7 @@ export function CircuitDocument({ documentId }) {
         )}
 
         {c.controleHumainObligatoire && (
-          <p className="mb-4 flex items-start gap-2 text-[12.5px] text-encre-2">
+          <p className="mb-4 flex items-start gap-2 text-[13px] text-encre-2">
             <ShieldAlert className="mt-0.5 size-4 shrink-0 text-attente" aria-hidden />
             Pièce critique (contrat, PV, attestation) : le contrôle humain est obligatoire, aucun automatisme ne s’y substitue.
           </p>
@@ -122,14 +122,14 @@ export function CircuitDocument({ documentId }) {
 
         {c.historique.length > 0 && (
           <div className="mt-5 border-t border-trait pt-4">
-            <h3 className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold tracking-wide text-encre-3 uppercase">
+            <h3 className="mb-2 flex items-center gap-1.5 text-[13px] font-semibold tracking-wide text-encre-3 uppercase">
               <History className="size-3.5" aria-hidden /> Historique
             </h3>
             <ul className="grid gap-2">
               {c.historique.map((h) => (
                 <li key={h.id} className="text-[13px]">
                   <span className="font-medium">{h.par}</span> <span className="text-encre-2">— {ETATS[h.avant]?.nom ?? h.avant} → {ETATS[h.apres]?.nom ?? h.apres}</span>
-                  <span className="block text-[12px] text-encre-3">
+                  <span className="block text-[13px] text-encre-3">
                     {depuis(h.creeLe)}
                     {h.commentaire ? ` · « ${h.commentaire} »` : ''}
                   </span>
@@ -162,7 +162,7 @@ export function CircuitDocument({ documentId }) {
 
         <Champ libelle="Motif de la prochaine version" aide="Pourquoi cette nouvelle version ? (facultatif)" value={motif} onChange={(e) => setMotif(e.target.value)} />
 
-        <p className="mt-3 text-[12.5px] text-encre-3">
+        <p className="mt-3 text-[13px] text-encre-3">
           Une version n’écrase jamais la précédente : c’est ce qui donne au fonds sa valeur de preuve. Une nouvelle version repart au contrôle.
         </p>
 
@@ -172,9 +172,9 @@ export function CircuitDocument({ documentId }) {
               <li key={v.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-trait px-3 py-2 text-[13px]">
                 <Badge>v{v.numero}</Badge>
                 <span className="min-w-0 flex-1 truncate">{v.nomOrigine ?? '—'}</span>
-                <span className="chiffres text-[12px] text-encre-3">{poids(v.taille)}</span>
-                <span className="text-[12px] text-encre-3">{v.auteur ?? '—'} · {dateHeure(v.creeLe)}</span>
-                {v.motif && <span className="w-full text-[12px] text-encre-3">« {v.motif} »</span>}
+                <span className="chiffres text-[13px] text-encre-3">{poids(v.taille)}</span>
+                <span className="text-[13px] text-encre-3">{v.auteur ?? '—'} · {dateHeure(v.creeLe)}</span>
+                {v.motif && <span className="w-full text-[13px] text-encre-3">« {v.motif} »</span>}
               </li>
             ))}
           </ul>

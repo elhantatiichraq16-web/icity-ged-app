@@ -307,15 +307,15 @@ function LigneFichier({ ligne: l, piece, versAClasser, retirer }) {
         <span className="min-w-0 flex-1 truncate" title={l.nom}>
           {l.nom}
         </span>
-        <span className="chiffres text-[12.5px] text-encre-3">{poids(l.taille)}</span>
-        <span className={cx('text-[12.5px] font-medium', l.etat === 'erreur' ? 'text-alerte' : l.etat === 'doublon' ? 'text-attente' : 'text-encre-2')}>{etat.libelle}</span>
+        <span className="chiffres text-[13px] text-encre-3">{poids(l.taille)}</span>
+        <span className={cx('text-[13px] font-medium', l.etat === 'erreur' ? 'text-alerte' : l.etat === 'doublon' ? 'text-attente' : 'text-encre-2')}>{etat.libelle}</span>
         {piece && (
-          <Link to={`/documents/${piece.id}`} className="text-[12.5px] font-medium text-cyan-texte hover:underline">
+          <Link to={`/documents/${piece.id}`} className="text-[13px] font-medium text-cyan-texte hover:underline">
             ouvrir
           </Link>
         )}
         {l.original && (
-          <Link to={`/documents/${l.original.id}`} className="text-[12.5px] font-medium text-cyan-texte hover:underline">
+          <Link to={`/documents/${l.original.id}`} className="text-[13px] font-medium text-cyan-texte hover:underline">
             voir l’original
           </Link>
         )}
@@ -331,7 +331,7 @@ function LigneFichier({ ligne: l, piece, versAClasser, retirer }) {
         )}
       </div>
       {piece && <Rangement piece={piece} versAClasser={versAClasser} />}
-      {l.message && <p className="mt-1 pl-7 text-[12.5px] text-encre-3">{l.message}</p>}
+      {l.message && <p className="mt-1 pl-7 text-[13px] text-encre-3">{l.message}</p>}
     </li>
   );
 }
@@ -342,7 +342,7 @@ function Rangement({ piece, versAClasser }) {
   const enLecture = EN_LECTURE.has(piece.statutOcr);
   const incomplete = !piece.marche || !piece.type;
   return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-7 text-[12.5px]">
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-7 text-[13px]">
       {piece.marche ? <Badge ton="cyan">{piece.marche.reference}</Badge> : <Badge ton={enLecture ? 'neutre' : 'attente'}>sans marché</Badge>}
       {piece.type ? <Badge>{piece.type.nom}</Badge> : <Badge ton={enLecture ? 'neutre' : 'attente'}>type à préciser</Badge>}
       {lecture && (

@@ -291,3 +291,16 @@ describe('le classement automatique ne range rien dans les archives', () => {
     expect(pieces[0].indices.reference.marche).toEqual({ id: m.id, reference: '23C/2017/TGR', archive: true });
   });
 });
+
+describe('le rappel des archives', () => {
+  it('compte les marchés et les pièces archivés, selon ce qu’on peut voir', async () => {
+    const m = await archiverEnBase(await creerMarche('31/2016'));
+    await db.document.create({ data: { titre: 'OS', marcheId: m.id } });
+    await db.document.create({ data: { titre: 'Scan', archiveLe: new Date() } });
+    await db.document.create({ data: { titre: 'Secret', archiveLe: new Date(), confidentialite: 'confidentiel' } });
+    await db.document.create({ data: { titre: 'En cours' } });
+
+    const lecteur = en(app, await connecter(app, (await creerUtilisateur('lecteur')).email));
+    expect((await lecteur('GET', '/api/archives/resume')).json()).toEqual({ marches: 1, documents: 2 });
+  });
+});

@@ -125,7 +125,7 @@ export function PageRecherche() {
           />
         </div>
         {(typeId || clientId || annee) && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px]">
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px]">
             <span className="text-encre-3">Filtres :</span>
             {typeId && <BoutonFiltre libelle={d?.facettes.types.find((t) => String(t.id) === typeId)?.nom ?? 'type'} onRetirer={() => filtrer('typeId', null)} />}
             {clientId && <BoutonFiltre libelle={d?.facettes.clients.find((c) => String(c.id) === clientId)?.nom ?? 'client'} onRetirer={() => filtrer('clientId', null)} />}
@@ -180,13 +180,13 @@ export function PageRecherche() {
                     </Link>
                     {r.type && <Badge>{r.type.nom}</Badge>}
                     {r.marche && (
-                      <Link to={`/marches/${r.marche.id}`} className="chiffres text-[12.5px] text-encre-2 hover:underline">
+                      <Link to={`/marches/${r.marche.id}`} className="chiffres text-[13px] text-encre-2 hover:underline">
                         {r.marche.reference}
                       </Link>
                     )}
                     {r.archive && <Badge>archivée</Badge>}
-                    {r.client && <span className="text-[12.5px] text-encre-3">{r.client.nom}</span>}
-                    <span className="ml-auto text-[12px] text-encre-3">
+                    {r.client && <span className="text-[13px] text-encre-3">{r.client.nom}</span>}
+                    <span className="ml-auto text-[13px] text-encre-3">
                       {r.pages ?? '?'} page{r.pages > 1 ? 's' : ''} · {dateCourte(r.dateDocument)}
                     </span>
                   </div>
@@ -242,7 +242,7 @@ function Facette({ titre, entrees, actif, surClic }) {
   if (!entrees?.length) return null;
   return (
     <Carte className="p-4">
-      <h2 className="mb-2 text-[12px] font-semibold tracking-wide text-encre-3 uppercase">{titre}</h2>
+      <h2 className="mb-2 text-[13px] font-semibold tracking-wide text-encre-3 uppercase">{titre}</h2>
       <ul className="grid gap-0.5">
         {entrees.slice(0, 8).map((e) => (
           <li key={e.id}>
@@ -256,7 +256,7 @@ function Facette({ titre, entrees, actif, surClic }) {
               )}
             >
               <span className="min-w-0 flex-1 truncate">{e.nom}</span>
-              <span className="chiffres text-[12px] text-encre-3">{e.n}</span>
+              <span className="chiffres text-[13px] text-encre-3">{e.n}</span>
             </button>
           </li>
         ))}

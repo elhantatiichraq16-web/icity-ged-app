@@ -23,7 +23,7 @@ import { cx } from '../ui/cx.js';
 import { useToasts } from '../ui/Toasts.jsx';
 import { Confirmation } from '../ui/Modale.jsx';
 import { useSession } from '../auth/session.jsx';
-import { CaseLigne, useArchivage } from './Archives.jsx';
+import { CaseLigne, RappelArchives, useArchivage } from './Archives.jsx';
 
 export const CLE_MARCHES = ['marches'];
 
@@ -123,7 +123,7 @@ function TableauAppelsOffres({ appels, peutModifier, selection }) {
         <table className="w-full min-w-[720px] text-sm">
           <caption className="sr-only">Appels d’offres non gagnés</caption>
           <thead>
-            <tr className="border-b border-trait text-left text-[12px] tracking-wide text-encre-3 uppercase">
+            <tr className="border-b border-trait text-left text-[13px] tracking-wide text-encre-3 uppercase">
               {selection && <CaseToutCocher selection={selection} />}
               <th scope="col" className="px-4 py-3 font-semibold">Référence</th>
               <th scope="col" className="px-4 py-3 font-semibold">Client</th>
@@ -415,6 +415,9 @@ export function PageMarches() {
         }
       />
 
+      {/* Plus rien en cours : on rappelle où est le fonds précédent. */}
+      {marches.data && marches.data.length === 0 && <RappelArchives className="mb-5" />}
+
       <div role="tablist" aria-label="Marchés ou appels d’offres" className="mb-5 flex gap-1 border-b border-trait">
         {[
           ['marches', 'Marchés gagnés', total],
@@ -432,7 +435,7 @@ export function PageMarches() {
             )}
           >
             {libelle}
-            <span className={cx('chiffres rounded-full px-2 text-[11.5px]', onglet === cle ? 'bg-cyan-voile text-cyan-texte' : 'bg-surface-2')}>{n}</span>
+            <span className={cx('chiffres rounded-full px-2 text-[12.5px]', onglet === cle ? 'bg-cyan-voile text-cyan-texte' : 'bg-surface-2')}>{n}</span>
           </button>
         ))}
       </div>
@@ -491,7 +494,7 @@ export function PageMarches() {
             <table className="w-full text-sm">
               <caption className="sr-only">Marchés, avec leur phase et leurs pièces</caption>
               <thead>
-                <tr className="border-b border-trait text-[12px] tracking-wide text-encre-3 uppercase">
+                <tr className="border-b border-trait text-[13px] tracking-wide text-encre-3 uppercase">
                   {selection && <CaseToutCocher selection={selection} />}
                   <Colonne id="reference">Référence</Colonne>
                   <Colonne id="client">Client</Colonne>
@@ -499,7 +502,7 @@ export function PageMarches() {
                   <Colonne id="phase">Phase</Colonne>
                   <Colonne id="echeance">Échéance</Colonne>
                   {PIECES_CYCLE.map((p) => (
-                    <th key={p.cle} scope="col" className="px-1 py-3 text-center text-[11px] font-semibold" title={p.nom}>
+                    <th key={p.cle} scope="col" className="px-1 py-3 text-center text-[12px] font-semibold" title={p.nom}>
                       {p.titre}
                     </th>
                   ))}
@@ -528,7 +531,7 @@ export function PageMarches() {
                       >
                         {m.reference}
                       </Link>
-                      {m.lot && <span className="ml-1.5 text-[11.5px] text-encre-3">lot {m.lot}</span>}
+                      {m.lot && <span className="ml-1.5 text-[12.5px] text-encre-3">lot {m.lot}</span>}
                     </td>
                     <td className="max-w-44 truncate px-3 py-2.5 text-encre-2" title={m.client?.nom}>
                       {m.client?.nom ?? '—'}
@@ -563,7 +566,7 @@ export function PageMarches() {
         )}
       </Carte>
 
-      <p className="mt-3 text-[12.5px] text-encre-3">
+      <p className="mt-3 text-[13px] text-encre-3">
         <Check className="inline size-3.5 text-ok" aria-hidden /> versée ·{' '}
         <X className="inline size-3.5 text-alerte" aria-hidden /> manquante à ce stade ·{' '}
         <Minus className="inline size-3 text-encre-3" aria-hidden /> pas encore attendue

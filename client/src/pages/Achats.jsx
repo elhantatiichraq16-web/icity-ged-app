@@ -80,7 +80,7 @@ function Tuile({ titre, valeur, note, ton }) {
     <Carte className="p-4">
       <p className="text-[13px] font-medium text-encre-2">{titre}</p>
       <p className={cx('chiffres mt-1 text-[24px] leading-tight font-semibold', ton === 'alerte' ? 'text-alerte-texte' : ton === 'ok' ? 'text-ok' : ton === 'attente' ? 'text-attente' : 'text-encre')}>{valeur}</p>
-      {note && <p className="mt-0.5 text-[12.5px] text-encre-3">{note}</p>}
+      {note && <p className="mt-0.5 text-[13px] text-encre-3">{note}</p>}
     </Carte>
   );
 }
@@ -88,7 +88,7 @@ function Tuile({ titre, valeur, note, ton }) {
 function ZoneTexte({ libelle, id, erreur, ...reste }) {
   return (
     <div className="grid gap-1.5">
-      <label htmlFor={id} className="text-[12.5px] font-semibold text-encre-2">
+      <label htmlFor={id} className="text-[13px] font-semibold text-encre-2">
         {libelle}
         <span className="font-normal text-encre-3"> (facultatif)</span>
       </label>
@@ -104,7 +104,7 @@ function ZoneTexte({ libelle, id, erreur, ...reste }) {
         {...reste}
       />
       {erreur && (
-        <p id={`${id}-erreur`} className="text-[12.5px] font-medium text-alerte-texte">
+        <p id={`${id}-erreur`} className="text-[13px] font-medium text-alerte-texte">
           {erreur}
         </p>
       )}
@@ -216,7 +216,7 @@ export function PageAchats() {
             )}
           >
             {libelle}
-            {n !== undefined && <span className={cx('chiffres rounded-full px-2 text-[11.5px]', onglet === cle ? 'bg-cyan-voile text-cyan-texte' : 'bg-surface-2')}>{n}</span>}
+            {n !== undefined && <span className={cx('chiffres rounded-full px-2 text-[12.5px]', onglet === cle ? 'bg-cyan-voile text-cyan-texte' : 'bg-surface-2')}>{n}</span>}
           </button>
         ))}
       </div>
@@ -360,7 +360,7 @@ function OngletSuivi({ achats, commandes, prix, gerer, surImporter }) {
                   <span className="text-encre-2"> — {a.message}</span>
                 </li>
               ))}
-              {alertes.length > 10 && <li className="text-[12.5px] text-encre-3">Et {alertes.length - 10} autre(s), dans l’onglet Matériel.</li>}
+              {alertes.length > 10 && <li className="text-[13px] text-encre-3">Et {alertes.length - 10} autre(s), dans l’onglet Matériel.</li>}
             </ul>
           ) : (
             <p className="text-sm text-encre-2">Rien à signaler : pas de retard, de marge négative ni de référence différente de l’offre.</p>
@@ -410,7 +410,7 @@ function ChoixStatut({ ligne }) {
       value={ligne.statut}
       disabled={envoi}
       onChange={(e) => changer(e.target.value)}
-      className="w-full min-w-[9rem] rounded-lg border border-trait bg-surface-2 px-2 py-1 text-[12.5px] font-medium text-encre hover:border-trait-fort focus:border-cyan focus:outline-none disabled:opacity-60"
+      className="w-full min-w-[9rem] rounded-lg border border-trait bg-surface-2 px-2 py-1 text-[13px] font-medium text-encre hover:border-trait-fort focus:border-cyan focus:outline-none disabled:opacity-60"
     >
       {STATUTS_ACHAT.map((s) => (
         <option key={s.code} value={s.code}>
@@ -455,7 +455,7 @@ function TableauMateriel({ achats, prix, gerer, tousMarches = false, surModifier
     <Carte className="overflow-x-auto">
       <table className="w-full text-[13px] [&_td]:px-2.5 [&_th]:px-2.5">
         <thead>
-          <tr className="border-b border-trait bg-surface-2 text-left text-[12px] font-semibold text-encre-3">
+          <tr className="border-b border-trait bg-surface-2 text-left text-[13px] font-semibold text-encre-3">
             <th className="py-2.5">N°</th>
             <th className="py-2.5">Matériel</th>
             <th className="py-2.5 text-right">Qté</th>
@@ -502,7 +502,7 @@ function GroupeMateriel({ groupe, colonnes, prix, gerer, surModifier }) {
   return (
     <>
       <tr className="border-b border-trait bg-cyan-voile/60">
-        <td colSpan={colonnes} className="py-1.5 text-[12px] font-semibold tracking-wide text-cyan-texte uppercase">
+        <td colSpan={colonnes} className="py-1.5 text-[13px] font-semibold tracking-wide text-cyan-texte uppercase">
           {groupe.cle}
         </td>
       </tr>
@@ -511,10 +511,10 @@ function GroupeMateriel({ groupe, colonnes, prix, gerer, surModifier }) {
           <td className="chiffres py-2.5 text-encre-3">{l.numero ?? '—'}</td>
           <td className="min-w-[15rem] py-2.5">
             <p className="font-medium">{l.designation}</p>
-            <p className="text-[12px] text-encre-3">{[l.marque, l.referenceAchat ?? l.referenceOffre].filter(Boolean).join(' · ') || ' '}</p>
-            {l.commentaire && <p className="mt-0.5 text-[12px] text-encre-2 italic">{l.commentaire}</p>}
+            <p className="text-[13px] text-encre-3">{[l.marque, l.referenceAchat ?? l.referenceOffre].filter(Boolean).join(' · ') || ' '}</p>
+            {l.commentaire && <p className="mt-0.5 text-[13px] text-encre-2 italic">{l.commentaire}</p>}
             {l.alertes.map((a) => (
-              <p key={a.code} className={cx('mt-0.5 text-[12px] font-medium', a.ton === 'alerte' ? 'text-alerte-texte' : a.ton === 'attente' ? 'text-attente' : 'text-encre-3')}>
+              <p key={a.code} className={cx('mt-0.5 text-[13px] font-medium', a.ton === 'alerte' ? 'text-alerte-texte' : a.ton === 'attente' ? 'text-attente' : 'text-encre-3')}>
                 {a.message}
               </p>
             ))}
@@ -530,7 +530,7 @@ function GroupeMateriel({ groupe, colonnes, prix, gerer, surModifier }) {
           <td className="py-2.5">{l.fournisseur?.nom ?? <span className="text-encre-3">à définir</span>}</td>
           <td className="py-2">
             {gerer ? <ChoixStatut ligne={l} /> : <Badge ton={statutAchat(l.statut).ton}>{statutAchat(l.statut).nom}</Badge>}
-            <p className="mt-1 text-[12px] whitespace-nowrap">
+            <p className="mt-1 text-[13px] whitespace-nowrap">
               {l.etd ? (
                 <span className={cx('chiffres', l.alertes.some((a) => a.code === 'retard') ? 'font-semibold text-alerte-texte' : 'text-encre-2')}>{`Livraison ${dateFr(l.etd)}`}</span>
               ) : (
@@ -818,7 +818,7 @@ function FormulaireImport({ marcheIdParDefaut, fermer, surImporte }) {
         ))}
       </Selection>
       <div className="grid gap-1.5">
-        <label htmlFor="classeur-achats" className="text-[12.5px] font-semibold text-encre-2">
+        <label htmlFor="classeur-achats" className="text-[13px] font-semibold text-encre-2">
           Classeur Excel (.xlsx)
         </label>
         <input
@@ -891,7 +891,7 @@ function OngletPaiements({ commandes, gerer, surNouvelle, surModifier }) {
         <Carte className="overflow-x-auto">
           <table className="w-full text-[13.5px]">
             <thead>
-              <tr className="border-b border-trait bg-surface-2 text-left text-[12px] font-semibold text-encre-3">
+              <tr className="border-b border-trait bg-surface-2 text-left text-[13px] font-semibold text-encre-3">
                 <th className="px-3 py-2.5">Fournisseur</th>
                 <th className="px-3 py-2.5">Lignes</th>
                 <th className="px-3 py-2.5 text-right">Montant TTC</th>
@@ -912,21 +912,21 @@ function OngletPaiements({ commandes, gerer, surNouvelle, surModifier }) {
                 <tr key={c.id} className="border-b border-trait align-top last:border-b-0">
                   <td className="px-3 py-2.5">
                     <p className="font-medium">{c.fournisseur?.nom}</p>
-                    <p className="text-[12px] text-encre-3">{c.marche?.reference}</p>
+                    <p className="text-[13px] text-encre-3">{c.marche?.reference}</p>
                   </td>
-                  <td className="max-w-[14rem] px-3 py-2.5 text-[12.5px] text-encre-2" title={c.lignes.map((l) => l.designation).join('\n')}>
+                  <td className="max-w-[14rem] px-3 py-2.5 text-[13px] text-encre-2" title={c.lignes.map((l) => l.designation).join('\n')}>
                     {c.lignes.length ? c.lignes.map((l) => l.numero ?? '·').join(', ') : '—'}
                   </td>
                   <td className="chiffres px-3 py-2.5 text-right whitespace-nowrap">{dh(c.montantTtc)}</td>
                   <td className="chiffres px-3 py-2.5 text-right whitespace-nowrap">
                     {c.avance ? dh(c.avance) : '—'}
-                    {c.avancePourcent ? <span className="block text-[11.5px] text-encre-3">{`${c.avancePourcent.toLocaleString('fr-FR')} %`}</span> : null}
+                    {c.avancePourcent ? <span className="block text-[12.5px] text-encre-3">{`${c.avancePourcent.toLocaleString('fr-FR')} %`}</span> : null}
                   </td>
                   <td className="chiffres px-3 py-2.5 text-right whitespace-nowrap">{dh(c.reste)}</td>
                   <td className="px-3 py-2.5 whitespace-nowrap">{modalitePaiement(c.modalite).nom}</td>
                   <td className={cx('chiffres px-3 py-2.5 whitespace-nowrap', c.etat !== 'soldee' && c.echeance && c.echeance < aujourdhui() && 'font-semibold text-alerte-texte')}>
                     {c.echeance ? dateFr(c.echeance) : '—'}
-                    {c.dateFacture && <span className="block text-[11.5px] font-normal text-encre-3">{`facture ${dateFr(c.dateFacture)}`}</span>}
+                    {c.dateFacture && <span className="block text-[12.5px] font-normal text-encre-3">{`facture ${dateFr(c.dateFacture)}`}</span>}
                   </td>
                   <td className="px-3 py-2.5">
                     <Badge ton={ETATS_PAIEMENT[c.etat].ton}>{ETATS_PAIEMENT[c.etat].nom}</Badge>
@@ -1045,7 +1045,7 @@ function FormulaireCommande({ commande, marcheIdParDefaut, fermer }) {
       </div>
       {v.marcheId && (
         <fieldset className="grid gap-1.5">
-          <legend className="mb-1 text-[12.5px] font-semibold text-encre-2">Lignes payées ensemble</legend>
+          <legend className="mb-1 text-[13px] font-semibold text-encre-2">Lignes payées ensemble</legend>
           <div className="grid max-h-48 gap-1 overflow-y-auto rounded-lg border border-trait p-2">
             {(lignesDuMarche.data?.lignes ?? []).map((l) => (
               <label key={l.id} className="flex cursor-pointer items-start gap-2 rounded px-1.5 py-1 text-[13px] hover:bg-surface-2">
@@ -1059,7 +1059,7 @@ function FormulaireCommande({ commande, marcheIdParDefaut, fermer }) {
             ))}
             {!lignesDuMarche.data?.lignes.length && <p className="px-1.5 py-1 text-[13px] text-encre-3">Ce marché n’a pas encore de lignes d’achat.</p>}
           </div>
-          {f.erreurs.lignes && <p className="text-[12.5px] font-medium text-alerte-texte">{f.erreurs.lignes}</p>}
+          {f.erreurs.lignes && <p className="text-[13px] font-medium text-alerte-texte">{f.erreurs.lignes}</p>}
         </fieldset>
       )}
       <div className="grid gap-4 sm:grid-cols-3">
@@ -1158,7 +1158,7 @@ function OngletFournisseurs({ gerer, surModifier }) {
         <Carte className="overflow-x-auto">
           <table className="w-full text-[13.5px]">
             <thead>
-              <tr className="border-b border-trait bg-surface-2 text-left text-[12px] font-semibold text-encre-3">
+              <tr className="border-b border-trait bg-surface-2 text-left text-[13px] font-semibold text-encre-3">
                 <th className="px-3 py-2.5">Fournisseur</th>
                 <th className="px-3 py-2.5">Contact</th>
                 <th className="px-3 py-2.5">Conditions habituelles</th>
