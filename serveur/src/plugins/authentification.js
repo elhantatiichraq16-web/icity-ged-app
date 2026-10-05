@@ -19,6 +19,15 @@ import { egalesSansFuite } from '../securite/crypto.js';
 
 const ECRITURES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+/** Routes publiques : utilisables avec un cookie de session périmé. */
+const SANS_JETON = new Set([
+  '/api/auth/connexion',
+  '/api/auth/deconnexion',
+  '/api/auth/mot-de-passe-oublie',
+  '/api/auth/reinitialisation',
+  '/api/auth/invitation',
+]);
+
 /** L'utilisateur tel que les routes et les écrans le voient (sans secrets). */
 export function utilisateurPublic(u) {
   return {
@@ -60,8 +69,11 @@ async function authentification(app) {
 
     // ── Jeton CSRF ──
     // Deuxième ligne de défense : un site tiers ne peut pas lire ce jeton,
-    // donc ne peut pas le renvoyer. On l'exige dès qu'une session existe.
-    if (session && ECRITURES.has(requete.method)) {
+    // donc ne peut pas le renvoyer. On l'exige dès qu'une session existe,
+    // sauf sur les écrans publics : un vieux cookie (autre onglet, session
+    // de test, déconnexion ratée) bloquerait sinon la connexion elle-même.
+    // Le contrôle d'origine ci-dessus les protège déjà.
+    if (session && ECRITURES.has(requete.method) && !SANS_JETON.has(requete.routeOptions.url)) {
       const recu = requete.headers['x-csrf-token'];
       if (!recu || !egalesSansFuite(recu, session.jetonCsrf)) {
         throw new ErreurHttp(419, 'La page a expiré. Rechargez-la puis réessayez.');

@@ -107,8 +107,16 @@ describe('protection CSRF', () => {
   it('refuse une écriture sans jeton CSRF quand une session existe', async () => {
     const u = await creerUtilisateur();
     const s = await connecter(app, u.email);
-    const r = await app.inject({ method: 'POST', url: '/api/auth/deconnexion', headers: { cookie: s.cookie, origin: ORIGINE } });
+    const r = await app.inject({ method: 'POST', url: '/api/activites', payload: {}, headers: { cookie: s.cookie, origin: ORIGINE } });
     expect(r.statusCode).toBe(419);
+  });
+
+  it('laisse se reconnecter malgré un vieux cookie de session sans jeton', async () => {
+    const u = await creerUtilisateur();
+    const ancienne = await connecter(app, u.email);
+    const r = await post('/api/auth/connexion', { email: u.email, motDePasse: MOT_DE_PASSE }, { cookie: ancienne.cookie });
+    expect(r.statusCode).toBe(200);
+    expect(cookieDe(r)).not.toBe(ancienne.cookie);
   });
 
   it('refuse une écriture venue d’un autre site', async () => {
