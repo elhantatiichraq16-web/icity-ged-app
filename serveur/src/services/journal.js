@@ -6,6 +6,7 @@
  * inaperçue non plus : on la signale dans les logs du serveur.
  */
 import { db } from '../db.js';
+import { notifierAbonnes } from './notifications.js';
 
 /**
  * @param {object} entree
@@ -35,5 +36,13 @@ export async function journaliser(entree, log) {
     });
   } catch (erreur) {
     (log ?? console).error({ err: erreur, action: entree.action }, 'Écriture du journal impossible');
+    return;
+  }
+  // Les abonnés de la fiche sont prévenus (le modèle d'Odoo). Un échec ici ne
+  // doit pas faire échouer le geste : on le signale seulement.
+  try {
+    await notifierAbonnes(entree);
+  } catch (erreur) {
+    (log ?? console).error({ err: erreur, action: entree.action }, 'Notification des abonnés impossible');
   }
 }

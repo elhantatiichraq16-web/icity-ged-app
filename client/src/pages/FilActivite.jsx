@@ -5,10 +5,10 @@
  * tout ce qui s'y est passé, du plus récent au plus ancien — notes, fiches
  * modifiées (avec l'ancienne et la nouvelle valeur), vie des pièces, mails.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, History, Mail, MailOpen, Paperclip, Send, StickyNote } from 'lucide-react';
+import { ArrowRight, BellOff, BellPlus, History, Mail, MailOpen, Paperclip, Send, StickyNote } from 'lucide-react';
 import { api } from '../api.js';
 import { dateHeure } from '../format.js';
 import { Bouton } from '../ui/Bouton.jsx';
@@ -102,8 +102,15 @@ const ICONES = {
   mail: { Icone: Mail, classe: 'bg-cyan-voile text-cyan-texte' },
 };
 
+/** Un nom écrit pour comparer : sans majuscules ni accents. */
+const plat = (t) =>
+  String(t ?? '')
+    .normalize('NFD')
+    .replace(/\p{Mn}/gu, '')
+    .toLowerCase();
+
 /**
- * @param {{ type: 'marche' | 'client', id: number | string, className?: string }} props
+ * @param {{ type: 'marche' | 'client' | 'fournisseur' | 'commande', id: number | string, className?: string }} props
  */
 export function FilActivite({ type, id, className }) {
   const cle = ['fil', type, String(id)];
@@ -111,6 +118,41 @@ export function FilActivite({ type, id, className }) {
   const [texte, setTexte] = useState('');
   const file = useQueryClient();
   const { notifier } = useToasts();
+  // Les mentions, comme dans Odoo : « @ » propose les collègues.
+  const zone = useRef(null);
+  const [mention, setMention] = useState(null); // { debut, saisie } pendant qu'on tape « @… »
+  const equipe = useQuery({ queryKey: ['equipe'], queryFn: () => api('/api/equipe'), enabled: mention !== null });
+  const suggestions = mention ? (equipe.data ?? []).filter((u) => plat(u.nom).startsWith(plat(mention.saisie)) || plat(u.nom).includes(` ${plat(mention.saisie)}`)).slice(0, 6) : [];
+
+  /** Repère un « @… » en cours de saisie, juste avant le curseur. */
+  function surSaisie(ev) {
+    const valeur = ev.target.value;
+    setTexte(valeur);
+    const avant = valeur.slice(0, ev.target.selectionStart);
+    const trouve = /(^|\s)@([\p{L}\-' ]{0,30})$/u.exec(avant);
+    setMention(trouve ? { debut: avant.length - trouve[2].length - 1, saisie: trouve[2] } : null);
+  }
+
+  /** Remplace le « @… » en cours par le nom complet du collègue choisi. */
+  function choisir(u) {
+    const fin = mention.debut + 1 + mention.saisie.length;
+    const suite = `${texte.slice(0, mention.debut)}@${u.nom} ${texte.slice(fin)}`;
+    setTexte(suite);
+    setMention(null);
+    requestAnimationFrame(() => {
+      const position = mention.debut + u.nom.length + 2;
+      zone.current?.focus();
+      zone.current?.setSelectionRange(position, position);
+    });
+  }
+
+  const suivre = useMutation({
+    mutationFn: (valeur) => api(`/api/fil/${type}/${id}/abonnement`, { methode: 'POST', corps: { suivre: valeur } }),
+    onSuccess: ({ abonne }) => {
+      file.invalidateQueries({ queryKey: cle });
+      notifier({ titre: abonne ? 'Vous suivez cette fiche' : 'Vous ne suivez plus cette fiche', message: abonne ? 'Les changements faits par les autres arriveront dans la cloche.' : 'Plus de notification pour elle.', ton: 'ok' });
+    },
+  });
 
   const noter = useMutation({
     mutationFn: () => api(`/api/fil/${type}/${id}/notes`, { methode: 'POST', corps: { texte } }),
@@ -132,7 +174,26 @@ export function FilActivite({ type, id, className }) {
   return (
     <Carte id="fil-activite" className={cx('scroll-mt-20', className)}>
       <div className="border-b border-trait px-5 py-4">
-        <h2 className="mb-3 font-semibold">Fil d’activité</h2>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <h2 className="mr-auto font-semibold">Fil d’activité</h2>
+          {/* Les abonnés et le bouton « Suivre », comme dans Odoo. */}
+          {fil.data && (
+            <>
+              <span className="text-[13px] text-encre-3" title={fil.data.abonnes.map((a) => a.nom).join(', ')}>
+                {fil.data.abonnes.length} abonné{fil.data.abonnes.length > 1 ? 's' : ''}
+              </span>
+              <Bouton
+                variante={fil.data.abonne ? 'fantome' : 'secondaire'}
+                taille="petit"
+                icone={fil.data.abonne ? BellOff : BellPlus}
+                chargement={suivre.isPending}
+                onClick={() => suivre.mutate(!fil.data.abonne)}
+              >
+                {fil.data.abonne ? 'Ne plus suivre' : 'Suivre'}
+              </Bouton>
+            </>
+          )}
+        </div>
         <form
           onSubmit={(ev) => {
             ev.preventDefault();
@@ -143,16 +204,46 @@ export function FilActivite({ type, id, className }) {
           <label htmlFor={`note-${type}-${id}`} className="sr-only">
             Écrire une note interne
           </label>
-          <textarea
-            id={`note-${type}-${id}`}
-            value={texte}
-            onChange={(ev) => setTexte(ev.target.value)}
-            rows={2}
-            placeholder="Écrire une note interne pour les collègues…"
-            className="w-full resize-y rounded-[10px] border border-trait bg-surface-2 px-3.5 py-2.5 text-[14.5px] leading-relaxed placeholder:text-encre-3 focus:border-cyan focus:bg-surface focus:outline-none"
-          />
+          <div className="relative">
+            <textarea
+              ref={zone}
+              id={`note-${type}-${id}`}
+              value={texte}
+              onChange={surSaisie}
+              onKeyDown={(ev) => {
+                if (ev.key === 'Escape') setMention(null);
+                if (ev.key === 'Enter' && mention && suggestions.length) {
+                  ev.preventDefault();
+                  choisir(suggestions[0]);
+                }
+              }}
+              rows={2}
+              placeholder="Écrire une note interne… Tapez @ pour mentionner un collègue."
+              aria-autocomplete="list"
+              className="w-full resize-y rounded-[10px] border border-trait bg-surface-2 px-3.5 py-2.5 text-[14.5px] leading-relaxed placeholder:text-encre-3 focus:border-cyan focus:bg-surface focus:outline-none"
+            />
+            {mention && suggestions.length > 0 && (
+              <ul role="listbox" aria-label="Collègues à mentionner" className="absolute top-full left-2 z-20 mt-1 w-64 rounded-lg border border-trait bg-surface p-1 shadow-haute">
+                {suggestions.map((u, i) => (
+                  <li key={u.id} role="option" aria-selected={i === 0}>
+                    <button
+                      type="button"
+                      onMouseDown={(ev) => {
+                        // Avant que la zone perde le focus.
+                        ev.preventDefault();
+                        choisir(u);
+                      }}
+                      className={cx('w-full rounded-md px-2.5 py-1.5 text-left text-[14px] hover:bg-surface-2', i === 0 && 'bg-surface-2')}
+                    >
+                      @{u.nom}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <div className="flex items-center justify-between gap-3">
-            <p className="text-[13px] text-encre-3">Visible par tous les utilisateurs, jamais par le client.</p>
+            <p className="text-[13px] text-encre-3">Visible par l’équipe, jamais par le client. Un collègue mentionné est prévenu dans sa cloche.</p>
             <Bouton type="submit" taille="petit" icone={Send} disabled={!texte.trim()} chargement={noter.isPending} libelleChargement="Envoi…">
               Enregistrer la note
             </Bouton>

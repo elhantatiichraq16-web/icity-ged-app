@@ -5,7 +5,7 @@
  *  - la page courante au centre (<Outlet />).
  */
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { DropdownMenu, Popover, Tooltip } from 'radix-ui';
 import { Bell, ChevronRight, ChevronsLeft, ChevronsRight, LogOut, Menu, Monitor, Moon, Search, Sun, User, X } from 'lucide-react';
@@ -13,7 +13,7 @@ import { api } from '../api.js';
 import { useSession } from '../auth/session.jsx';
 import { Avatar } from '../ui/Avatar.jsx';
 import { cx } from '../ui/cx.js';
-import { EtatVide } from '../ui/Elements.jsx';
+import { depuis } from '../format.js';
 import { Logo, Pictogramme } from '../ui/Logo.jsx';
 import { groupesVisibles, ICONES_GROUPES } from './navigation.js';
 import { PaletteCommandes } from './PaletteCommandes.jsx';
@@ -303,38 +303,85 @@ function BarreHaut({ ouvrirTiroir, ouvrirPalette }) {
  * Elle se rafraîchit toutes les 30 secondes — assez pour suivre une relève,
  * assez peu pour ne pas peser sur un PC de 3,7 Go.
  */
+/**
+ * La cloche : les messages (mentions, changements sur les fiches suivies,
+ * comme dans Odoo), puis les tâches de fond (lectures, relève du courriel).
+ */
 function Cloche() {
   const notifications = useQuery({ queryKey: ['notifications'], queryFn: () => api('/api/notifications'), refetchInterval: 30_000 });
+  const file = useQueryClient();
+  const naviguer = useNavigate();
+  const [ouverte, setOuverte] = useState(false);
   const taches = notifications.data?.taches ?? [];
+  const messages = notifications.data?.messages ?? [];
+  const nonLues = notifications.data?.nonLues ?? 0;
+  const pastille = taches.length + nonLues;
+
+  async function marquerLues(ids) {
+    await api('/api/notifications/lues', { methode: 'POST', corps: ids ? { ids } : {} }).catch(() => {});
+    file.invalidateQueries({ queryKey: ['notifications'] });
+  }
 
   return (
-    <Popover.Root>
+    <Popover.Root open={ouverte} onOpenChange={setOuverte}>
       <Popover.Trigger
         className="relative grid size-10 place-items-center rounded-lg text-encre-2 hover:bg-surface-2 hover:text-encre"
-        aria-label={taches.length ? `Tâches en cours : ${taches.length}` : 'Tâches en cours : aucune'}
+        aria-label={nonLues ? `Notifications : ${nonLues} non lue(s)` : taches.length ? `Tâches en cours : ${taches.length}` : 'Notifications : aucune'}
       >
         <Bell className="size-5" aria-hidden />
-        {taches.length > 0 && (
-          <span className="absolute top-1.5 right-1.5 grid size-4 place-items-center rounded-full bg-cyan text-[10px] font-bold text-white" aria-hidden>
-            {taches.length}
+        {pastille > 0 && (
+          <span className={cx('absolute top-1.5 right-1.5 grid size-4 place-items-center rounded-full text-[10px] font-bold text-white', nonLues ? 'bg-alerte' : 'bg-cyan')} aria-hidden>
+            {pastille > 9 ? '9+' : pastille}
           </span>
         )}
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content align="end" sideOffset={8} className="z-50 w-80 animate-apparition rounded-carte border border-trait bg-surface shadow-haute focus:outline-none">
-          <div className="border-b border-trait px-4 py-3">
+        <Popover.Content align="end" sideOffset={8} className="z-50 w-96 max-w-[calc(100vw-1rem)] animate-apparition rounded-carte border border-trait bg-surface shadow-haute focus:outline-none">
+          <div className="flex items-center justify-between border-b border-trait px-4 py-3">
+            <p className="font-semibold">Messages</p>
+            {nonLues > 0 && (
+              <button type="button" onClick={() => marquerLues()} className="text-[13px] font-medium text-cyan-texte hover:underline">
+                Tout marquer comme lu
+              </button>
+            )}
+          </div>
+          {messages.length === 0 ? (
+            <p className="px-4 py-4 text-[13px] text-encre-3">Les mentions (@vous) et les changements sur les fiches que vous suivez apparaîtront ici.</p>
+          ) : (
+            <ul className="max-h-80 overflow-y-auto p-2">
+              {messages.map((m) => (
+                <li key={m.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!m.lue) marquerLues([m.id]);
+                      setOuverte(false);
+                      naviguer(m.lien);
+                    }}
+                    className={cx('flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-surface-2', !m.lue && 'bg-cyan-voile/60')}
+                  >
+                    <span className={cx('mt-1 size-2 shrink-0 rounded-full', m.lue ? 'bg-trait-fort' : m.genre === 'mention' ? 'bg-alerte' : 'bg-cyan')} aria-hidden />
+                    <span className="min-w-0 flex-1">
+                      <span className={cx('block', !m.lue && 'font-medium')}>{m.texte}</span>
+                      <span className="text-[12.5px] text-encre-3">{depuis(m.creeLe)}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="border-t border-trait px-4 py-3">
             <p className="font-semibold">Tâches en cours</p>
           </div>
           {taches.length === 0 ? (
-            <EtatVide titre="Rien en cours" className="py-6">
-              Les lectures OCR et les relèves de courriel apparaîtront ici.
-            </EtatVide>
+            <p className="px-4 pb-3 text-[13px] text-encre-3">Rien en cours. Les lectures OCR et les relèves de courriel apparaîtront ici.</p>
           ) : (
-            <ul className="p-2">
+            <ul className="p-2 pt-0">
               {taches.map((t) => (
                 <li key={t.cle}>
-                  <Link to={t.vers} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] hover:bg-surface-2">
-                    <span className={cx('size-2 shrink-0 rounded-full', t.ton === 'attente' ? 'bg-attente' : 'bg-cyan')} aria-hidden />
+                  <Link to={t.vers} onClick={() => setOuverte(false)} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] hover:bg-surface-2">
+                    <span className={cx('size-2 shrink-0 rounded-full', t.ton === 'alerte' ? 'bg-alerte' : t.ton === 'attente' ? 'bg-attente' : 'bg-cyan')} aria-hidden />
                     <span className="min-w-0 flex-1">{t.libelle}</span>
                   </Link>
                 </li>
@@ -342,7 +389,7 @@ function Cloche() {
             </ul>
           )}
           <div className="border-t border-trait px-4 py-2.5">
-            <Link to="/arrivees" className="text-[13px] font-medium text-cyan-texte hover:underline">
+            <Link to="/arrivees" onClick={() => setOuverte(false)} className="text-[13px] font-medium text-cyan-texte hover:underline">
               Arrivées des dernières 24 h ({notifications.data?.arrivees ?? 0})
             </Link>
           </div>

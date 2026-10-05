@@ -11,6 +11,7 @@ import { db } from '../db.js';
 import { ErreurHttp, interdit, introuvable, valider } from '../erreurs.js';
 import { exiger, exigerConnexion } from '../plugins/authentification.js';
 import { journaliser } from '../services/journal.js';
+import { abonner } from '../services/notifications.js';
 
 const date = (v) => new Date(`${v}T00:00:00Z`);
 const jour = (d) => d.toISOString().slice(0, 10);
@@ -133,6 +134,10 @@ export default async function routesActivites(app) {
       data: { ...donnees, echeance: date(donnees.echeance), marcheId: marcheId ?? null, clientId: clientId ?? null, fournisseurId: fournisseurId ?? null, commandeId: commandeId ?? null, creeParId: requete.utilisateur.id },
       include: AVEC,
     });
+    // La personne chargée et l'auteur suivent la fiche : ils en sauront la suite.
+    const { objetType, objetId } = ficheDe(cree);
+    await abonner(cree.assigneId, objetType, objetId);
+    await abonner(requete.utilisateur.id, objetType, objetId);
     await journaliser(
       {
         utilisateurId: requete.utilisateur.id,

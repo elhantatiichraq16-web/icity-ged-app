@@ -70,6 +70,9 @@ model Utilisateur {
   documentsArchives Document[]      @relation("DocumentsArchives")
   activitesAssignees Activite[]     @relation("ActivitesAssignees")
   activitesCreees   Activite[]      @relation("ActivitesCreees")
+  abonnements       Abonnement[]
+  notifications     Notification[]  @relation("NotificationsRecues")
+  notificationsEmises Notification[] @relation("NotificationsEmises")
   documentsVerses Document[]        @relation("DocumentsVerses")
   versionsDeposees DocumentVersion[] @relation("VersionsDeposees")
   achatsSuivis    LigneAchat[]      @relation("SuiviAchat")
@@ -739,4 +742,40 @@ model Activite {
   @@index([fournisseurId])
   @@index([commandeId])
   @@map("activites")
+}
+
+// ── Abonnés et notifications (le modèle d'Odoo) ────────────────
+
+/// Suivre une fiche : être prévenu de ce qu'y font les autres.
+model Abonnement {
+  id            Int         @id @default(autoincrement())
+  utilisateurId Int         @map("utilisateur_id")
+  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  /// Marche | Client | Fournisseur | CommandeFournisseur
+  objetType     String      @map("objet_type") @db.VarChar(30)
+  objetId       Int         @map("objet_id")
+  creeLe        DateTime    @default(now()) @map("cree_le")
+
+  @@unique([utilisateurId, objetType, objetId])
+  @@index([objetType, objetId])
+  @@map("abonnements")
+}
+
+/// Une notification dans la cloche : une mention, ou un changement sur une
+/// fiche suivie.
+model Notification {
+  id            Int          @id @default(autoincrement())
+  utilisateurId Int          @map("utilisateur_id")
+  utilisateur   Utilisateur  @relation("NotificationsRecues", fields: [utilisateurId], references: [id], onDelete: Cascade)
+  parId         Int?         @map("par_id")
+  par           Utilisateur? @relation("NotificationsEmises", fields: [parId], references: [id], onDelete: SetNull)
+  /// mention | suivi
+  genre         String       @db.VarChar(20)
+  texte         String       @db.VarChar(255)
+  lien          String       @db.VarChar(255)
+  lueLe         DateTime?    @map("lue_le")
+  creeLe        DateTime     @default(now()) @map("cree_le")
+
+  @@index([utilisateurId, lueLe])
+  @@map("notifications")
 }

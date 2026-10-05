@@ -4,7 +4,9 @@
  */
 import { confidentialitesVisibles } from '@icity/commun/droits';
 import { jourCasablanca } from '@icity/commun/activites';
+import { z } from 'zod';
 import { db } from '../db.js';
+import { valider } from '../erreurs.js';
 import { exigerConnexion } from '../plugins/authentification.js';
 import { DOUBLONS_HORS_ARCHIVES } from '../services/archivage.js';
 import { filtreAClasser } from './tri.js';
@@ -38,6 +40,28 @@ export default async function routesNotifications(app) {
     if (aClasser) taches.push({ cle: 'a_classer', libelle: `${aClasser} pièce(s) à classer`, ton: 'attente', vers: '/a-classer' });
     if (doublons) taches.push({ cle: 'doublons', libelle: `${doublons} doublon(s) probable(s) à trancher`, ton: 'attente', vers: '/a-verifier' });
 
-    return { taches, arrivees, total: taches.length };
+    // Les mentions et les changements sur les fiches suivies (le modèle d'Odoo).
+    const [messages, nonLues] = await Promise.all([
+      db.notification.findMany({ where: { utilisateurId: requete.utilisateur.id }, orderBy: { creeLe: 'desc' }, take: 20, include: { par: { select: { nom: true } } } }),
+      db.notification.count({ where: { utilisateurId: requete.utilisateur.id, lueLe: null } }),
+    ]);
+
+    return {
+      taches,
+      arrivees,
+      messages: messages.map((m) => ({ id: m.id, genre: m.genre, texte: m.texte, lien: m.lien, par: m.par?.nom ?? null, lue: Boolean(m.lueLe), creeLe: m.creeLe })),
+      nonLues,
+      total: taches.length + nonLues,
+    };
+  });
+
+  /** Marquer des notifications comme lues : toutes, ou celles indiquées. */
+  app.post('/api/notifications/lues', { preHandler: exigerConnexion }, async (requete) => {
+    const { ids } = valider(z.object({ ids: z.array(z.number().int().positive()).max(200).optional() }), requete.body ?? {});
+    const { count } = await db.notification.updateMany({
+      where: { utilisateurId: requete.utilisateur.id, lueLe: null, ...(ids ? { id: { in: ids } } : {}) },
+      data: { lueLe: new Date() },
+    });
+    return { lues: count };
   });
 }

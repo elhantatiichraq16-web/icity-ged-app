@@ -18,6 +18,8 @@ import { db } from '../db.js';
 import { interdit, introuvable, valider } from '../erreurs.js';
 import { exigerConnexion } from '../plugins/authentification.js';
 import { journaliser } from '../services/journal.js';
+import { abonner, notifierMentions } from '../services/notifications.js';
+import { PHRASES } from '../services/phrases.js';
 
 /** Les consultations ne sont pas des événements : elles encombreraient le fil. */
 const ACTIONS_TAIRES = ['document.telecharge'];
@@ -69,44 +71,7 @@ const CHAMPS = {
   confidentialite: 'Confidentialité',
 };
 
-/** Ce que dit chaque action, en clair. `{piece}` est remplacé par le titre de la pièce. */
-const PHRASES = {
-  'marche.cree': 'a créé l’affaire',
-  'marche.modifie': 'a modifié la fiche',
-  'marche.archive': 'a archivé le marché',
-  'marche.desarchive': 'a désarchivé le marché',
-  'marche.declare_par_attestation': 'a déclaré l’affaire d’après une attestation',
-  'achats.import': 'a importé le classeur des achats',
-  'activite.planifiee': 'a planifié une activité',
-  'activite.faite': 'a fait une activité',
-  'activite.annulee': 'a annulé une activité',
-  'client.cree': 'a créé le client',
-  'client.modifie': 'a modifié la fiche',
-  'client.contact_ajoute': 'a ajouté un contact',
-  'client.contact_modifie': 'a modifié un contact',
-  'client.contact_retire': 'a retiré un contact',
-  'commande.creee': 'a créé la commande',
-  'commande.modifiee': 'a modifié la commande',
-  'commande.bon_genere': 'a préparé le bon de commande',
-  'commande.envoyee': 'a envoyé le bon de commande au fournisseur',
-  'commande.piece_versee': 'a versé une pièce du fournisseur',
-  'fournisseur.cree': 'a créé le fournisseur',
-  'fournisseur.modifie': 'a modifié la fiche',
-  'fournisseur.fusionne': 'a fusionné un doublon dans cette fiche',
-  'fournisseur.contact_ajoute': 'a ajouté un contact',
-  'fournisseur.contact_modifie': 'a modifié un contact',
-  'fournisseur.contact_retire': 'a retiré un contact',
-  'document.verse': 'a versé {piece}',
-  'document.modifie': 'a rangé ou corrigé {piece}',
-  'document.classe_auto': 'a rangé automatiquement {piece}',
-  'document.corbeille': 'a mis {piece} en corbeille',
-  'document.restaure': 'a restauré {piece}',
-  'document.archive': 'a archivé {piece}',
-  'document.desarchive': 'a désarchivé {piece}',
-  'document.nouvelle_version': 'a déposé une nouvelle version de {piece}',
-  'document.relecture': 'a relancé la lecture de {piece}',
-  'document.corbeille_lot': 'a mis des pièces en corbeille, dont {piece}',
-};
+
 
 /** Une valeur de journal, lisible. */
 function lisible(champ, valeur, noms) {
@@ -271,7 +236,13 @@ export default async function routesFil(app) {
     const elements = [...lignes.map((l) => elementJournal(l, noms, parPiece)), ...mails.map(elementMail)]
       .sort((a, b) => new Date(b.date) - new Date(a.date))
       .slice(0, LIMITE);
-    return { elements };
+    // Les abonnés de la fiche, et si l'on en fait partie (le bouton « Suivre »).
+    const abonnes = await db.abonnement.findMany({ where: { objetType: type, objetId: id }, include: { utilisateur: { select: { id: true, nom: true } } }, orderBy: { creeLe: 'asc' } });
+    return {
+      elements,
+      abonne: abonnes.some((a) => a.utilisateurId === requete.utilisateur.id),
+      abonnes: abonnes.map((a) => a.utilisateur),
+    };
   });
 
   /**
@@ -286,11 +257,23 @@ export default async function routesFil(app) {
       requete.body,
     );
     await journaliser({ utilisateurId: requete.utilisateur.id, action: 'note', objetType: type, objetId: id, commentaire: texte, ip: requete.ip }, requete.log);
+    // L'auteur suit la fiche ; les personnes mentionnées sont prévenues, et la suivent.
+    await abonner(requete.utilisateur.id, type, id);
+    await notifierMentions({ texte, objetType: type, objetId: id, auteurId: requete.utilisateur.id });
     const ligne = await db.journal.findFirst({
       where: { action: 'note', objetType: type, objetId: id, utilisateurId: requete.utilisateur.id },
       include: { utilisateur: { select: { nom: true } } },
       orderBy: { id: 'desc' },
     });
     return reponse.code(201).send(elementJournal(ligne, await chargerNoms([]), new Map()));
+  });
+
+  /** Suivre une fiche, ou ne plus la suivre : le bouton « Suivre » d'Odoo. */
+  app.post('/api/fil/:type/:id/abonnement', async (requete) => {
+    const { type, id } = await fiche(requete);
+    const { suivre } = valider(z.object({ suivre: z.boolean() }), requete.body);
+    if (suivre) await abonner(requete.utilisateur.id, type, id);
+    else await db.abonnement.deleteMany({ where: { utilisateurId: requete.utilisateur.id, objetType: type, objetId: id } });
+    return { abonne: suivre };
   });
 }
