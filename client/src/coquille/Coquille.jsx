@@ -8,18 +8,32 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { DropdownMenu, Popover, Tooltip } from 'radix-ui';
-import { Bell, ChevronsLeft, ChevronsRight, LogOut, Menu, Monitor, Moon, Search, Sun, User, X } from 'lucide-react';
+import { Bell, ChevronRight, ChevronsLeft, ChevronsRight, LogOut, Menu, Monitor, Moon, Search, Sun, User, X } from 'lucide-react';
 import { api } from '../api.js';
 import { useSession } from '../auth/session.jsx';
 import { Avatar } from '../ui/Avatar.jsx';
 import { cx } from '../ui/cx.js';
 import { EtatVide } from '../ui/Elements.jsx';
 import { Logo, Pictogramme } from '../ui/Logo.jsx';
-import { groupesVisibles } from './navigation.js';
+import { groupesVisibles, ICONES_GROUPES } from './navigation.js';
 import { PaletteCommandes } from './PaletteCommandes.jsx';
 import { useTheme } from './theme.js';
 
 const CLE_REPLIE = 'icity.barre-repliee';
+const CLE_GROUPES = 'icity.groupes-ouverts';
+
+/**
+ * Les groupes du menu ouverts ou fermés à la main, `{ Affaires: true }` :
+ * un confort, perdu sans dommage.
+ */
+function lireChoixGroupes() {
+  try {
+    const lu = JSON.parse(localStorage.getItem(CLE_GROUPES) ?? '{}');
+    return lu && typeof lu === 'object' && !Array.isArray(lu) ? lu : {};
+  } catch {
+    return {};
+  }
+}
 
 function lireReplie() {
   try {
@@ -126,25 +140,96 @@ function ContenuBarre({ replie, droits }) {
         )}
       </Link>
       <nav aria-label="Navigation principale" className="flex-1 overflow-y-auto px-3 py-3">
-        {groupesVisibles(droits).map(({ groupe, entrees }, i) => (
-          <div key={groupe} className={cx(i > 0 && 'mt-3')}>
-            {/* Repliée, la barre n'a pas la place d'un titre : un trait le remplace. */}
-            {replie ? (
-              i > 0 && <div aria-hidden className="mx-2 mb-3 border-t border-trait" />
-            ) : (
-              <p className="mb-1 px-3 text-[12.5px] font-semibold tracking-[0.08em] text-encre-3 uppercase">{groupe}</p>
-            )}
-            <ul className="grid gap-0.5" aria-label={groupe}>
-              {entrees.map((e) => (
-                <li key={e.chemin}>
-                  <EntreeNavigation entree={e} replie={replie} />
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+        {replie ? <MenuReplie droits={droits} /> : <MenuGroupes droits={droits} />}
       </nav>
     </>
+  );
+}
+
+/** Barre repliée : toutes les icônes, un trait entre deux groupes. */
+function MenuReplie({ droits }) {
+  return groupesVisibles(droits).map(({ groupe, entrees }, i) => (
+    <div key={groupe}>
+      {i > 0 && <div aria-hidden className="mx-2 my-2 border-t border-trait" />}
+      <ul className="grid gap-0.5" aria-label={groupe}>
+        {entrees.map((e) => (
+          <li key={e.chemin}>
+            <EntreeNavigation entree={e} replie />
+          </li>
+        ))}
+      </ul>
+    </div>
+  ));
+}
+
+/**
+ * Barre dépliée : chaque groupe s'ouvre d'un clic sur son titre (« Affaires »
+ * montre Marchés, Achats, Clients). Tant qu'on n'y a pas touché, seul le
+ * groupe de la page courante est ouvert, pour qu'on voie où l'on est ; ensuite
+ * il suit le dernier clic. Un groupe d'une seule entrée reste un lien direct.
+ */
+function MenuGroupes({ droits }) {
+  const { pathname } = useLocation();
+  const [choix, setChoix] = useState(lireChoixGroupes);
+
+  function basculer(groupe, ouvert) {
+    setChoix((avant) => {
+      const apres = { ...avant, [groupe]: !ouvert };
+      try {
+        localStorage.setItem(CLE_GROUPES, JSON.stringify(apres));
+      } catch {
+        // Navigation privée : le menu oubliera, rien de plus.
+      }
+      return apres;
+    });
+  }
+
+  const estCourante = (e) => (e.chemin === '/' ? pathname === '/' : pathname.startsWith(e.chemin));
+
+  return (
+    <ul className="grid gap-0.5">
+      {groupesVisibles(droits).map(({ groupe, entrees }) => {
+        if (entrees.length === 1) {
+          return (
+            <li key={groupe}>
+              <EntreeNavigation entree={entrees[0]} />
+            </li>
+          );
+        }
+        const courant = entrees.some(estCourante);
+        const ouvert = choix[groupe] ?? courant;
+        const Icone = ICONES_GROUPES[groupe];
+        const idListe = `menu-${groupe}`;
+        return (
+          <li key={groupe}>
+            <button
+              type="button"
+              onClick={() => basculer(groupe, ouvert)}
+              aria-expanded={ouvert}
+              aria-controls={idListe}
+              className={cx(
+                'flex h-9 w-full items-center gap-3 rounded-[10px] px-3 text-[14px] font-medium transition-colors',
+                courant && !ouvert ? 'text-cyan-texte' : 'text-encre-2',
+                'hover:bg-surface-2 hover:text-encre',
+              )}
+            >
+              {Icone && <Icone className="size-[18px] shrink-0" aria-hidden />}
+              <span className="flex-1 truncate text-left">{groupe}</span>
+              <ChevronRight className={cx('size-4 shrink-0 text-encre-3 transition-transform', ouvert && 'rotate-90')} aria-hidden />
+            </button>
+            {ouvert && (
+              <ul id={idListe} aria-label={groupe} className="mt-0.5 ml-[21px] grid gap-0.5 border-l border-trait pl-2">
+                {entrees.map((e) => (
+                  <li key={e.chemin}>
+                    <EntreeNavigation entree={e} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

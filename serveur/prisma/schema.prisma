@@ -144,14 +144,52 @@ model Client {
   interne        Boolean   @default(false)
   /// Le dossier d'origine dans les archives, pour un versement relançable.
   dossierOrigine String?   @map("dossier_origine") @db.VarChar(191)
+
+  // ── La fiche, sur le modèle d'Odoo : qui il est, où le joindre ──
+  /// administration | etablissement_public | collectivite | entreprise_publique | entreprise_privee | autre
+  typeOrganisme     String?  @map("type_organisme") @db.VarChar(30)
+  /// Identifiant commun de l'entreprise : 15 chiffres.
+  ice               String?  @db.VarChar(15)
+  identifiantFiscal String?  @map("identifiant_fiscal") @db.VarChar(20)
+  registreCommerce  String?  @map("registre_commerce") @db.VarChar(40)
+  adresse           String?  @db.VarChar(255)
+  codePostal        String?  @map("code_postal") @db.VarChar(10)
+  ville             String?  @db.VarChar(80)
+  pays              String?  @db.VarChar(60)
+  telephone         String?  @db.VarChar(30)
+  email             String?  @db.VarChar(191)
+  siteWeb           String?  @map("site_web") @db.VarChar(191)
+  /// Notes internes : horaires de dépôt, particularités…
+  notes             String?  @db.Text
+
   creeLe         DateTime  @default(now()) @map("cree_le")
   modifieLe      DateTime  @updatedAt @map("modifie_le")
 
   marches   Marche[]
   documents Document[]
   mails     Mail[]
+  contacts  ContactClient[]
 
   @@map("clients")
+}
+
+/// Une personne à joindre chez un client : le chef de service, l'ordonnateur,
+/// le technicien qui suit le chantier.
+model ContactClient {
+  id        Int      @id @default(autoincrement())
+  clientId  Int      @map("client_id")
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  nom       String   @db.VarChar(120)
+  fonction  String?  @db.VarChar(120)
+  telephone String?  @db.VarChar(30)
+  mobile    String?  @db.VarChar(30)
+  email     String?  @db.VarChar(191)
+  notes     String?  @db.Text
+  creeLe    DateTime @default(now()) @map("cree_le")
+  modifieLe DateTime @updatedAt @map("modifie_le")
+
+  @@index([clientId])
+  @@map("contacts_clients")
 }
 
 /// La nature d'une pièce. `ordreCycle` et `pieceAttendue` désignent les six

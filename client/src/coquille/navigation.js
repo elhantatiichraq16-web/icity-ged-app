@@ -6,7 +6,7 @@
  * `phase` : la phase de livraison où l'écran sera construit.
  * `droit` : l'entrée n'apparaît que si l'utilisateur a ce droit.
  */
-import { Archive, Building2, ClipboardCheck, FileText, FolderInput, FolderKanban, Inbox, LayoutDashboard, Mail, Settings, ShoppingCart, Trash2, Upload } from 'lucide-react';
+import { Archive, Briefcase, Building2, ClipboardCheck, FileText, Files, FolderInput, FolderKanban, Inbox, LayoutDashboard, ListChecks, Mail, Package, Settings, ShoppingCart, Trash2, Upload } from 'lucide-react';
 
 export const NAVIGATION = [
   { chemin: '/', libelle: 'Tableau de bord', icone: LayoutDashboard, phase: 6, groupe: 'Pilotage' },
@@ -28,6 +28,9 @@ export const NAVIGATION = [
 ];
 
 export const ARRIVEES = { chemin: '/arrivees', libelle: 'Arrivées', icone: Inbox, phase: 8 };
+
+/** L'icône d'un groupe : sur son titre, qu'on clique pour l'ouvrir. */
+export const ICONES_GROUPES = { Affaires: Briefcase, Documents: Files, Tri: ListChecks, Rangement: Package };
 
 /** Les entrées visibles pour ces droits. */
 export function entreesVisibles(droits) {

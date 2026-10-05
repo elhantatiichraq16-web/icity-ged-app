@@ -289,3 +289,58 @@ describe('export et recherche', () => {
     expect((await requete('GET', '/api/recherche?q=mar2022')).json().marches).toHaveLength(1);
   });
 });
+
+describe('fiche client (modèle Odoo)', () => {
+  it('crée un client avec sa fiche complète, et la corrige', async () => {
+    const requete = en(app, await connecter(app, (await creerUtilisateur('directeur')).email));
+    const cree = await requete('POST', '/api/clients', {
+      nom: 'Office National des Chemins de Fer',
+      sigle: 'ONCF',
+      typeOrganisme: 'entreprise_publique',
+      ice: '001234567000089',
+      adresse: '8 bis, rue Abderrahmane El Ghafiki',
+      ville: 'Rabat',
+      pays: 'Maroc',
+      telephone: '0537 77 47 47',
+      email: 'Contact@ONCF.ma',
+      notes: 'Dépôt des plis au bureau d’ordre, avant 15 h.',
+    });
+    expect(cree.statusCode).toBe(201);
+    expect(cree.json()).toMatchObject({ ice: '001234567000089', ville: 'Rabat', email: 'contact@oncf.ma', typeOrganisme: 'entreprise_publique' });
+
+    const id = cree.json().id;
+    const modif = await requete('PATCH', `/api/clients/${id}`, { nom: 'Office National des Chemins de Fer', ville: 'Rabat-Agdal', email: '' });
+    expect(modif.statusCode).toBe(200);
+    expect(modif.json()).toMatchObject({ ville: 'Rabat-Agdal', email: null });
+    expect(await db.journal.count({ where: { action: 'client.modifie', objetId: id } })).toBe(1);
+  });
+
+  it('refuse un ICE qui n’a pas 15 chiffres, et un nom déjà pris', async () => {
+    const autre = await db.client.create({ data: { nom: 'Banque Atlas' } });
+    const requete = en(app, await connecter(app, (await creerUtilisateur('directeur')).email));
+    expect((await requete('POST', '/api/clients', { nom: 'ONCF', ice: '12345' })).json().erreurs.ice).toMatch(/15 chiffres/);
+    const r = await requete('PATCH', `/api/clients/${client.id}`, { nom: 'banque atlas' });
+    expect(r.statusCode).toBe(409);
+    expect(autre.id).not.toBe(client.id);
+  });
+
+  it('garde plusieurs contacts, que l’on modifie et retire', async () => {
+    const requete = en(app, await connecter(app, (await creerUtilisateur('responsable_documentaire')).email));
+    const a = (await requete('POST', `/api/clients/${client.id}/contacts`, { nom: 'Karim Alami', fonction: 'Chef du service informatique', mobile: '+212 661 00 00 00' })).json();
+    await requete('POST', `/api/clients/${client.id}/contacts`, { nom: 'Salma Bennani', fonction: 'Ordonnatrice', email: 's.bennani@tgr.gov.ma' });
+
+    let fiche = (await requete('GET', `/api/clients/${client.id}`)).json();
+    expect(fiche.contacts.map((p) => p.nom)).toEqual(['Karim Alami', 'Salma Bennani']);
+
+    await requete('PATCH', `/api/contacts-clients/${a.id}`, { nom: 'Karim Alami', fonction: 'Directeur des systèmes d’information' });
+    await requete('DELETE', `/api/contacts-clients/${a.id}`);
+    fiche = (await requete('GET', `/api/clients/${client.id}`)).json();
+    expect(fiche.contacts).toMatchObject([{ nom: 'Salma Bennani', fonction: 'Ordonnatrice' }]);
+  });
+
+  it('réserve la fiche et les contacts à ceux qui gèrent les clients', async () => {
+    const requete = en(app, await connecter(app, (await creerUtilisateur('chef_projet')).email));
+    expect((await requete('PATCH', `/api/clients/${client.id}`, { nom: 'TGR' })).statusCode).toBe(403);
+    expect((await requete('POST', `/api/clients/${client.id}/contacts`, { nom: 'Karim Alami' })).statusCode).toBe(403);
+  });
+});

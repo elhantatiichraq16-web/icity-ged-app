@@ -99,6 +99,58 @@ const sansDoublon = (liste) => [...new Set(liste)];
  * Les synonymes servent à reconnaître le client dans le texte lu (§7), les
  * domaines à rattacher ses mails (§10). Ils arrivent déjà découpés en listes.
  */
+/** Les types d'organisme d'un client, comme les étiquettes d'Odoo. */
+export const TYPES_ORGANISMES = [
+  { code: 'administration', nom: 'Administration, ministère' },
+  { code: 'etablissement_public', nom: 'Établissement public' },
+  { code: 'collectivite', nom: 'Collectivité territoriale' },
+  { code: 'entreprise_publique', nom: 'Entreprise publique, office' },
+  { code: 'entreprise_privee', nom: 'Entreprise privée' },
+  { code: 'autre', nom: 'Autre' },
+];
+
+/** Un texte facultatif : vide, il devient `null` (et efface l'ancienne valeur). */
+const facultatif = (max) =>
+  z
+    .string()
+    .trim()
+    .max(max, { error: `${max} caractères au plus.` })
+    .transform((v) => v || null)
+    .nullish();
+
+/** Un numéro de téléphone : chiffres, espaces, +, points, tirets, parenthèses. */
+const telephone = z
+  .string()
+  .trim()
+  .max(30, { error: '30 caractères au plus.' })
+  .regex(/^[+\d\s().-]*$/, { error: 'Chiffres, espaces et + seulement : « 0537 66 00 00 » ou « +212 537… ».' })
+  .transform((v) => v || null)
+  .nullish();
+
+/** Une adresse e-mail facultative. */
+const courriel = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .max(191)
+  .regex(/^$|^[^\s@]+@[^\s@]+\.[^\s@]+$/, { error: 'Adresse invalide : écrivez par exemple « contact@tgr.gov.ma ».' })
+  .transform((v) => v || null)
+  .nullish();
+
+/** Une personne à joindre chez un client. */
+export const schemaContactClient = z.object({
+  nom: z
+    .string({ error: 'Saisissez le nom.' })
+    .trim()
+    .min(2, { error: 'Au moins 2 caractères.' })
+    .max(120, { error: '120 caractères au plus.' }),
+  fonction: facultatif(120),
+  telephone,
+  mobile: telephone,
+  email: courriel,
+  notes: facultatif(2000),
+});
+
 export const schemaClient = z.object({
   nom: z
     .string({ error: 'Saisissez le nom du client.' })
@@ -123,6 +175,28 @@ export const schemaClient = z.object({
     .max(20, { error: '20 domaines au plus.' })
     .default([])
     .transform(sansDoublon),
+
+  // ── La fiche, sur le modèle d'Odoo ──
+  typeOrganisme: z
+    .enum(TYPES_ORGANISMES.map((t) => t.code), { error: 'Choisissez un type dans la liste.' })
+    .or(z.literal('').transform(() => null))
+    .nullish(),
+  ice: z
+    .string()
+    .trim()
+    .regex(/^(\d{15})?$/, { error: 'L’ICE compte 15 chiffres.' })
+    .transform((v) => v || null)
+    .nullish(),
+  identifiantFiscal: facultatif(20),
+  registreCommerce: facultatif(40),
+  adresse: facultatif(255),
+  codePostal: facultatif(10),
+  ville: facultatif(80),
+  pays: facultatif(60),
+  telephone,
+  email: courriel,
+  siteWeb: facultatif(191),
+  notes: facultatif(4000),
 });
 
 /**

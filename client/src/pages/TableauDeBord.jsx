@@ -8,7 +8,7 @@ import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { ArcElement, BarElement, CategoryScale, Chart, LinearScale, LineElement, PointElement, Tooltip } from 'chart.js';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
-import { AlertTriangle, FileText, FolderKanban, Layers, ShieldAlert, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowRight, FileText, FolderKanban, Layers, Mail, ShieldAlert, Trash2, Upload } from 'lucide-react';
 import { ORDRE_PHASES, PHASES } from '@icity/commun/marches';
 import { api } from '../api.js';
 import { useSession } from '../auth/session.jsx';
@@ -46,6 +46,9 @@ const OPTIONS = (c) => ({
   },
 });
 
+/** La date du jour, en tête de page : « lundi 5 octobre 2026 ». */
+const aujourdhui = () => new Intl.DateTimeFormat('fr-FR', { dateStyle: 'full', timeZone: 'Africa/Casablanca' }).format(new Date());
+
 export function PageTableauDeBord() {
   const { utilisateur } = useSession();
   const donnees = useQuery({ queryKey: ['tableau-bord'], queryFn: () => api('/api/tableau-bord'), refetchInterval: 60_000 });
@@ -63,16 +66,17 @@ export function PageTableauDeBord() {
   const c = couleurs();
   const prenom = utilisateur.nom.split(' ')[0];
 
+  // Rien en cours (après l'archivage de fin d'exercice, ou au tout début) :
+  // des tuiles à zéro ne diraient rien. On montre par où commencer.
+  if (tuiles.marchesTotal === 0 && !tuiles.appelsOffres && tuiles.documents === 0) return <NouveauDepart prenom={prenom} />;
+
   return (
     <div className="animate-apparition">
       <EnTetePage
-        surtitre={new Intl.DateTimeFormat('fr-FR', { dateStyle: 'full', timeZone: 'Africa/Casablanca' }).format(new Date())}
+        surtitre={aujourdhui()}
         titre={`Bonjour, ${prenom}`}
         description="L’état du fonds : les affaires, ce qui manque à leurs dossiers, et ce qui demande votre attention."
       />
-
-      {/* Un tableau de bord à zéro après l'archivage : on rappelle où est le fonds. */}
-      {tuiles.marchesTotal === 0 && tuiles.documents === 0 && <RappelArchives className="mb-5" />}
 
       {/* ── Tuiles ── */}
       <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -106,15 +110,27 @@ export function PageTableauDeBord() {
       <Carte className="mb-5 p-5">
         <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
           <h2 className="font-semibold">Taux de rattachement</h2>
+          {/* Sans pièce, il n'y a pas de taux : ni « 0 % » ni barre rouge, qui
+              feraient croire à un fonds mal tenu. */}
           <p className="text-[13px] text-encre-2">
-            <strong className="chiffres text-lg text-encre">{tuiles.tauxRattachement} %</strong> — {tuiles.rattaches} pièces sur {tuiles.documents} appartiennent à une affaire
+            {tuiles.documents ? (
+              <>
+                <strong className="chiffres text-lg text-encre">{tuiles.tauxRattachement} %</strong> — {tuiles.rattaches} pièces sur {tuiles.documents} appartiennent à une affaire
+              </>
+            ) : (
+              <>
+                <strong className="text-lg text-encre-3">—</strong> Aucune pièce en cours
+              </>
+            )}
           </p>
         </div>
-        <div className="h-2.5 overflow-hidden rounded-full bg-trait" role="img" aria-label={`${tuiles.tauxRattachement} pour cent des pièces sont rattachées à un marché`}>
-          <div
-            className={cx('h-full rounded-full transition-[width] duration-500', tuiles.tauxRattachement >= 80 ? 'bg-ok' : tuiles.tauxRattachement >= 50 ? 'bg-attente' : 'bg-bordeaux')}
-            style={{ width: `${Math.max(2, tuiles.tauxRattachement)}%` }}
-          />
+        <div className="h-2.5 overflow-hidden rounded-full bg-trait" role="img" aria-label={tuiles.documents ? `${tuiles.tauxRattachement} pour cent des pièces sont rattachées à un marché` : 'Aucune pièce en cours'}>
+          {tuiles.documents > 0 && (
+            <div
+              className={cx('h-full rounded-full transition-[width] duration-500', tuiles.tauxRattachement >= 80 ? 'bg-ok' : tuiles.tauxRattachement >= 50 ? 'bg-attente' : 'bg-bordeaux')}
+              style={{ width: `${Math.max(2, tuiles.tauxRattachement)}%` }}
+            />
+          )}
         </div>
       </Carte>
 
@@ -266,6 +282,65 @@ export function PageTableauDeBord() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Le tableau de bord d'un fonds vide : par où commencer, selon ses droits, et
+ * le rappel que le fonds précédent est aux archives.
+ */
+function NouveauDepart({ prenom }) {
+  const { droits } = useSession();
+  const actions = [
+    droits.can('creer', 'Marche') && {
+      vers: '/marches/nouveau',
+      icone: FolderKanban,
+      titre: 'Déclarer un marché',
+      texte: 'Une affaire gagnée, ou un appel d’offres auquel vous répondez.',
+    },
+    droits.can('verser', 'Document') && {
+      vers: '/verser',
+      icone: Upload,
+      titre: 'Verser des pièces',
+      texte: 'Les documents scannés ou reçus : ils sont lus et rangés automatiquement.',
+    },
+    droits.can('lire', 'Mail') && {
+      vers: '/courriel',
+      icone: Mail,
+      titre: 'Suivre le courriel',
+      texte: 'Les mails reçus et leurs pièces jointes, à rattacher à leur affaire.',
+    },
+  ].filter(Boolean);
+
+  return (
+    <div className="animate-apparition">
+      <EnTetePage
+        surtitre={aujourdhui()}
+        titre={`Bonjour, ${prenom}`}
+        description="Un nouveau départ : aucune affaire n’est en cours. Voici par où commencer."
+      />
+
+      {actions.length > 0 && (
+        <div className="mb-5 grid gap-4 md:grid-cols-3">
+          {actions.map(({ vers, icone: Icone, titre, texte }) => (
+            <Link key={vers} to={vers} className="group">
+              <Carte as="div" className="flex h-full flex-col p-5 transition-[box-shadow,border-color] duration-200 group-hover:border-trait-fort group-hover:shadow-haute">
+                <span className="mb-4 grid size-10 place-items-center rounded-lg bg-cyan-voile text-cyan-texte">
+                  <Icone className="size-5" aria-hidden />
+                </span>
+                <h2 className="mb-1.5 text-lg font-semibold">{titre}</h2>
+                <p className="flex-1 text-[14px] text-encre-2">{texte}</p>
+                <span className="mt-4 inline-flex items-center gap-1.5 text-[14px] font-semibold text-cyan-texte">
+                  Commencer <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" aria-hidden />
+                </span>
+              </Carte>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      <RappelArchives />
     </div>
   );
 }

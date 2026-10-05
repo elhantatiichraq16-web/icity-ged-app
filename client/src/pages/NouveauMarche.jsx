@@ -14,14 +14,16 @@
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Plus } from 'lucide-react';
 import { OBJETS_TECHNIQUES, STATUTS_AFFAIRE } from '@icity/commun/marches';
 import { api } from '../api.js';
+import { useSession } from '../auth/session.jsx';
 import { useFormulaire } from '../formulaire.js';
 import { Bouton } from '../ui/Bouton.jsx';
 import { Champ, Selection } from '../ui/Champ.jsx';
 import { Alerte, Carte, EnTetePage } from '../ui/Elements.jsx';
 import { useToasts } from '../ui/Toasts.jsx';
+import { ModaleNouveauClient } from './Clients.jsx';
 import { CLE_MARCHES } from './Marches.jsx';
 
 export function PageNouveauMarche() {
@@ -32,6 +34,10 @@ export function PageNouveauMarche() {
   const clients = useQuery({ queryKey: ['clients'], queryFn: () => api('/api/clients') });
   const appelOffres = parametres.get('nature') === 'ao';
   const [existant, setExistant] = useState(null);
+  // Un client absent de la liste s'ajoute sans quitter le formulaire.
+  const [creationClient, setCreationClient] = useState(false);
+  const { droits } = useSession();
+  const peutCreerClient = droits.can('gerer', 'Client');
 
   const f = useFormulaire({
     reference: parametres.get('reference') ?? '',
@@ -103,7 +109,19 @@ export function PageNouveauMarche() {
 
         <form noValidate onSubmit={envoyer} className="grid gap-4 sm:grid-cols-2">
           <Champ libelle="Référence" aide="Telle qu’elle figure sur le contrat ou l’avis : 13/2018, 44/AOO/DRAN-ANP/2022…" autoFocus {...f.champ('reference')} />
-          <Selection libelle="Client" {...f.champ('clientId')}>
+          <Selection
+            libelle="Client"
+            {...f.champ('clientId')}
+            aide={
+              peutCreerClient ? (
+                <button type="button" onClick={() => setCreationClient(true)} className="inline-flex items-center gap-1 font-semibold text-cyan-texte hover:underline">
+                  <Plus className="size-3.5" aria-hidden /> Client absent de la liste ? L’ajouter
+                </button>
+              ) : (
+                'Client absent de la liste ? Demandez à la direction de l’ajouter.'
+              )
+            }
+          >
             <option value="">— à rattacher plus tard —</option>
             {(clients.data ?? []).map((c) => (
               <option key={c.id} value={String(c.id)}>
@@ -147,6 +165,16 @@ export function PageNouveauMarche() {
           </div>
         </form>
       </Carte>
+
+      {/* Hors du <form> de l'affaire : dans React, l'envoi du formulaire du
+          client remonterait jusqu'à lui et créerait l'affaire au passage. */}
+      {peutCreerClient && (
+        <ModaleNouveauClient
+          ouverte={creationClient}
+          surChangement={setCreationClient}
+          surCree={(cree) => f.setValeurs((v) => ({ ...v, clientId: String(cree.id) }))}
+        />
+      )}
     </div>
   );
 }

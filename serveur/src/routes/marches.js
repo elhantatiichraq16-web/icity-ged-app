@@ -21,7 +21,7 @@ import {
   STATUTS_AFFAIRE,
   STATUTS_CLIENT,
 } from '@icity/commun/marches';
-import { schemaClient } from '@icity/commun/schemas';
+import { schemaClient, schemaContactClient } from '@icity/commun/schemas';
 import { db } from '../db.js';
 import { ErreurHttp, introuvable, valider } from '../erreurs.js';
 import { exiger, exigerConnexion } from '../plugins/authentification.js';
@@ -40,7 +40,25 @@ function vueClient(c) {
     interne: c.interne,
     synonymes: c.synonymes ?? [],
     domainesEmail: c.domainesEmail ?? [],
+    // La fiche, sur le modèle d'Odoo.
+    typeOrganisme: c.typeOrganisme,
+    ice: c.ice,
+    identifiantFiscal: c.identifiantFiscal,
+    registreCommerce: c.registreCommerce,
+    adresse: c.adresse,
+    codePostal: c.codePostal,
+    ville: c.ville,
+    pays: c.pays,
+    telephone: c.telephone,
+    email: c.email,
+    siteWeb: c.siteWeb,
+    notes: c.notes,
   };
+}
+
+/** Une personne à joindre chez un client. */
+function vueContact(p) {
+  return { id: p.id, nom: p.nom, fonction: p.fonction, telephone: p.telephone, mobile: p.mobile, email: p.email, notes: p.notes };
 }
 
 /** Les champs modifiables à la main sur une fiche marché (§11, onglet Informations). */
@@ -263,12 +281,19 @@ export default async function routesMarches(app) {
 
     const pieces = (await piecesParMarche([id])).get(id) ?? {};
     const codes = (await codesParMarche([id])).get(id) ?? [];
+    // Les chiffres des boutons de raccourci, en haut de la fiche (comme Odoo).
+    const [nbMails, nbAchats] = await Promise.all([
+      requete.droits.can('lire', 'Mail') ? db.mail.count({ where: { marcheId: id } }) : 0,
+      requete.droits.can('lire', 'Achat') ? db.ligneAchat.count({ where: { marcheId: id } }) : 0,
+    ]);
     const doublons = await doublonsEnAttente(
       documents.map((d) => d.id),
       { confidentialites: visibles },
     );
     return {
       ...vueMarche(m, pieces, documents.length, codes),
+      nbMails,
+      nbAchats,
       documents: documents.map((d) => ({
         id: d.id,
         titre: d.titre,
@@ -518,6 +543,81 @@ export default async function routesMarches(app) {
     return reponse.code(201).send({ ...vueClient(cree), nbMarches: 0, nbMarchesEnCours: 0, nbAppelsOffres: 0, nbDocuments: 0, statut: statutClient([]) });
   });
 
+  /**
+   * Compléter ou corriger la fiche d'un client.
+   *
+   * Le formulaire renvoie toute la fiche : un champ vidé efface l'ancienne
+   * valeur. Le nom reste unique, sans tenir compte des majuscules.
+   */
+  app.patch('/api/clients/:id', { preHandler: exiger('gerer', 'Client') }, async (requete) => {
+    const id = Number(requete.params.id) || 0;
+    const avant = await db.client.findUnique({ where: { id } });
+    if (!avant) throw introuvable('Client');
+
+    // Seuls les champs envoyés changent : les listes ont « vide » pour valeur
+    // par défaut, et un champ oublié ne doit rien effacer.
+    const lus = valider(schemaClient, requete.body);
+    const donnees = Object.fromEntries(Object.entries(lus).filter(([c]) => c in (requete.body ?? {})));
+    const homonyme = await db.client.findFirst({ where: { id: { not: id }, nom: { equals: donnees.nom, mode: 'insensitive' } } });
+    if (homonyme) {
+      throw new ErreurHttp(409, 'Ce nom est déjà pris.', { erreurs: { nom: `« ${homonyme.nom} » est déjà au référentiel.` } });
+    }
+
+    const apres = await db.client.update({ where: { id }, data: donnees });
+    const modifies = Object.keys(donnees).filter((c) => JSON.stringify(avant[c] ?? null) !== JSON.stringify(apres[c] ?? null));
+    await journaliser(
+      {
+        utilisateurId: requete.utilisateur.id,
+        action: 'client.modifie',
+        objetType: 'Client',
+        objetId: id,
+        avant: Object.fromEntries(modifies.map((c) => [c, avant[c] ?? null])),
+        apres: Object.fromEntries(modifies.map((c) => [c, apres[c] ?? null])),
+        ip: requete.ip,
+      },
+      requete.log,
+    );
+    return vueClient(apres);
+  });
+
+  // ── Les contacts d'un client ──────────────────────────────────
+  app.post('/api/clients/:id/contacts', { preHandler: exiger('gerer', 'Client') }, async (requete, reponse) => {
+    const clientId = Number(requete.params.id) || 0;
+    if (!(await db.client.findUnique({ where: { id: clientId } }))) throw introuvable('Client');
+    const donnees = valider(schemaContactClient, requete.body);
+    const cree = await db.contactClient.create({ data: { ...donnees, clientId } });
+    await journaliser(
+      { utilisateurId: requete.utilisateur.id, action: 'client.contact_ajoute', objetType: 'Client', objetId: clientId, apres: { nom: cree.nom, fonction: cree.fonction }, ip: requete.ip },
+      requete.log,
+    );
+    return reponse.code(201).send(vueContact(cree));
+  });
+
+  app.patch('/api/contacts-clients/:id', { preHandler: exiger('gerer', 'Client') }, async (requete) => {
+    const id = Number(requete.params.id) || 0;
+    const avant = await db.contactClient.findUnique({ where: { id } });
+    if (!avant) throw introuvable('Contact');
+    const donnees = valider(schemaContactClient, requete.body);
+    const apres = await db.contactClient.update({ where: { id }, data: donnees });
+    await journaliser(
+      { utilisateurId: requete.utilisateur.id, action: 'client.contact_modifie', objetType: 'Client', objetId: avant.clientId, avant: vueContact(avant), apres: vueContact(apres), ip: requete.ip },
+      requete.log,
+    );
+    return vueContact(apres);
+  });
+
+  app.delete('/api/contacts-clients/:id', { preHandler: exiger('gerer', 'Client') }, async (requete) => {
+    const id = Number(requete.params.id) || 0;
+    const contact = await db.contactClient.findUnique({ where: { id } });
+    if (!contact) throw introuvable('Contact');
+    await db.contactClient.delete({ where: { id } });
+    await journaliser(
+      { utilisateurId: requete.utilisateur.id, action: 'client.contact_retire', objetType: 'Client', objetId: contact.clientId, avant: vueContact(contact), ip: requete.ip },
+      requete.log,
+    );
+    return { ok: true };
+  });
+
   /** La liste des clients en CSV : mêmes lignes, même ordre que l'écran. */
   app.get('/api/clients/export.csv', async (requete, reponse) => {
     const clients = await listerClients(requete);
@@ -546,7 +646,7 @@ export default async function routesMarches(app) {
 
   app.get('/api/clients/:id', async (requete) => {
     const id = Number(requete.params.id) || 0;
-    const client = await db.client.findUnique({ where: { id } });
+    const client = await db.client.findUnique({ where: { id }, include: { contacts: { orderBy: { nom: 'asc' } } } });
     if (!client) throw introuvable('Client');
 
     const marches = await db.marche.findMany({
@@ -556,9 +656,24 @@ export default async function routesMarches(app) {
       orderBy: [{ archiveLe: { sort: 'asc', nulls: 'first' } }, { reference: 'asc' }],
     });
     const ids = marches.map((m) => m.id);
-    const [pieces, codes] = await Promise.all([piecesParMarche(ids), codesParMarche(ids)]);
+    const [pieces, codes, nbDocuments, nbMails] = await Promise.all([
+      piecesParMarche(ids),
+      codesParMarche(ids),
+      // Les chiffres des boutons de raccourci : les pièces qu'on peut voir.
+      db.document.count({
+        where: {
+          clientId: id,
+          supprimeLe: null,
+          OR: [{ confidentialite: { in: confidentialitesVisibles(requete.utilisateur.role.code) } }, { verseParId: requete.utilisateur.id }],
+        },
+      }),
+      requete.droits.can('lire', 'Mail') ? db.mail.count({ where: { clientId: id } }) : 0,
+    ]);
     return {
       ...vueClient(client),
+      nbDocuments,
+      nbMails,
+      contacts: client.contacts.map(vueContact),
       marches: marches.map((m) => vueMarche(m, pieces.get(m.id) ?? {}, 0, codes.get(m.id) ?? [])),
     };
   });

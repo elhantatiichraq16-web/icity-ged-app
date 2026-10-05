@@ -61,6 +61,23 @@ export const Champ = forwardRef(function Champ({ libelle, aide, erreur, classNam
   );
 });
 
+/** Un texte de plusieurs lignes : des notes, une remarque. */
+export const ZoneTexte = forwardRef(function ZoneTexte({ libelle, aide, erreur, className, facultatif, lignes = 3, ...reste }, ref) {
+  const id = useId();
+  return (
+    <Enveloppe id={id} libelle={libelle} aide={aide} erreur={erreur} className={className} facultatif={facultatif}>
+      <textarea
+        ref={ref}
+        id={id}
+        rows={lignes}
+        className={cx(BASE_CHAMP, 'resize-y py-2.5 leading-relaxed', erreur ? 'border-alerte' : 'border-trait')}
+        {...aria(id, erreur, aide)}
+        {...reste}
+      />
+    </Enveloppe>
+  );
+});
+
 /** Mot de passe avec le bouton « œil » pour l'afficher ou le masquer. */
 export const ChampMotDePasse = forwardRef(function ChampMotDePasse({ libelle = 'Mot de passe', aide, erreur, className, ...reste }, ref) {
   const id = useId();

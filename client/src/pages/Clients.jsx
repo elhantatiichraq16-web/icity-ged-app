@@ -24,23 +24,27 @@ import {
   FolderKanban,
   LayoutGrid,
   List,
+  Mail,
+  Pencil,
   Plus,
   Printer,
   Search,
+  Users,
   X,
 } from 'lucide-react';
 import { STATUTS_CLIENT } from '@icity/commun/marches';
-import { erreursParChamp, schemaClient } from '@icity/commun/schemas';
+import { erreursParChamp, schemaClient, schemaContactClient, TYPES_ORGANISMES } from '@icity/commun/schemas';
 import { api, ErreurApi } from '../api.js';
 import { useSession } from '../auth/session.jsx';
 import { dateCourte } from '../format.js';
 import { useFormulaire } from '../formulaire.js';
 import { Bouton } from '../ui/Bouton.jsx';
-import { Champ } from '../ui/Champ.jsx';
+import { Champ, Selection, ZoneTexte } from '../ui/Champ.jsx';
 import { Alerte, Badge, Carte, EnTetePage, EtatVide, SqueletteLignes } from '../ui/Elements.jsx';
-import { Modale } from '../ui/Modale.jsx';
+import { Confirmation, Modale } from '../ui/Modale.jsx';
 import { useToasts } from '../ui/Toasts.jsx';
 import { cx } from '../ui/cx.js';
+import { allerAuFil, BoutonRaccourci, FilActivite } from './FilActivite.jsx';
 import { BadgeEtatMarche } from './Marches.jsx';
 
 const plat = (t) => t.normalize('NFD').replace(/\p{Mn}/gu, '').toLowerCase();
@@ -306,17 +310,45 @@ function parChamp(erreurs) {
   return sortie;
 }
 
-const VIDE = { nom: '', sigle: '', synonymes: '', domainesEmail: '' };
+/** Les champs de la fiche, tels que le formulaire les tient (en texte). */
+const CHAMPS_FICHE = ['typeOrganisme', 'ice', 'identifiantFiscal', 'registreCommerce', 'adresse', 'codePostal', 'ville', 'pays', 'telephone', 'email', 'siteWeb', 'notes'];
 
-function ModaleNouveauClient({ ouverte, surChangement }) {
-  const f = useFormulaire(VIDE);
+const VIDE = { nom: '', sigle: '', synonymes: '', domainesEmail: '', ...Object.fromEntries(CHAMPS_FICHE.map((c) => [c, ''])), pays: 'Maroc' };
+
+/** Un client connu, mis en forme pour le formulaire. */
+function versFormulaire(c) {
+  return {
+    nom: c.nom ?? '',
+    sigle: c.sigle ?? '',
+    synonymes: (c.synonymes ?? []).join(', '),
+    domainesEmail: (c.domainesEmail ?? []).join(', '),
+    ...Object.fromEntries(CHAMPS_FICHE.map((champ) => [champ, c[champ] ?? ''])),
+  };
+}
+
+/** Un intertitre de formulaire, sur toute la largeur. */
+function Section({ children }) {
+  return <h3 className="mt-2 border-b border-trait pb-1.5 font-sans text-[13px] font-semibold tracking-[0.06em] text-encre-3 uppercase sm:col-span-2">{children}</h3>;
+}
+
+/**
+ * La fiche d'un client, sur le modèle d'Odoo : qui il est, où le joindre,
+ * comment le reconnaître dans les pièces, et des notes internes.
+ *
+ * Sans `client`, elle en ajoute un ; avec, elle le modifie. Depuis un autre
+ * formulaire (« Nouvelle affaire »), `surCree` reçoit le client créé pour le
+ * choisir sur place.
+ */
+export function ModaleClient({ ouverte, surChangement, client, surCree }) {
+  const depart = client ? versFormulaire(client) : VIDE;
+  const f = useFormulaire(depart);
   const fileAttente = useQueryClient();
   const naviguer = useNavigate();
   const { notifier } = useToasts();
 
   function fermer(etat) {
     if (!etat) {
-      f.setValeurs(VIDE);
+      f.setValeurs(depart);
       f.setErreurGenerale('');
     }
     surChangement(etat);
@@ -325,17 +357,28 @@ function ModaleNouveauClient({ ouverte, surChangement }) {
   // Les listes sont saisies en texte : on les découpe avant de valider avec
   // le même schéma que le serveur, puis on remet ses erreurs sous les champs.
   const envoyer = f.soumettre(null, async (v) => {
-    const lu = schemaClient.safeParse({ nom: v.nom, sigle: v.sigle, synonymes: decouper(v.synonymes), domainesEmail: decouper(v.domainesEmail) });
+    const lu = schemaClient.safeParse({ ...v, synonymes: decouper(v.synonymes), domainesEmail: decouper(v.domainesEmail) });
     if (!lu.success) throw new ErreurApi(422, { message: 'Certains champs sont à corriger.', erreurs: parChamp(erreursParChamp(lu.error)) });
-    let cree;
+    let enregistre;
     try {
-      cree = await api('/api/clients', { methode: 'POST', corps: lu.data });
+      enregistre = await api(client ? `/api/clients/${client.id}` : '/api/clients', { methode: client ? 'PATCH' : 'POST', corps: lu.data });
     } catch (erreur) {
       if (erreur instanceof ErreurApi) erreur.erreurs = parChamp(erreur.erreurs);
       throw erreur;
     }
+    // Attendre la liste relue : le formulaire appelant doit pouvoir choisir
+    // le nouveau client aussitôt.
     await fileAttente.invalidateQueries({ queryKey: ['clients'] });
-    notifier({ titre: 'Client ajouté', message: cree.nom, ton: 'ok', action: { libelle: 'Ouvrir', onClick: () => naviguer(`/clients/${cree.id}`) } });
+    await fileAttente.invalidateQueries({ queryKey: ['client'] });
+    fileAttente.invalidateQueries({ queryKey: ['fil', 'client'] });
+    if (client) {
+      notifier({ titre: 'Fiche enregistrée', message: enregistre.nom, ton: 'ok' });
+    } else if (surCree) {
+      notifier({ titre: 'Client ajouté', message: `${enregistre.nom} est choisi pour cette affaire.`, ton: 'ok' });
+      surCree(enregistre);
+    } else {
+      notifier({ titre: 'Client ajouté', message: enregistre.nom, ton: 'ok', action: { libelle: 'Ouvrir', onClick: () => naviguer(`/clients/${enregistre.id}`) } });
+    }
     fermer(false);
   });
 
@@ -343,29 +386,64 @@ function ModaleNouveauClient({ ouverte, surChangement }) {
     <Modale
       ouverte={ouverte}
       surChangement={fermer}
-      titre="Nouveau client"
-      description="Un maître d’ouvrage ajouté au référentiel. Ses synonymes aident à le reconnaître dans les pièces lues."
+      largeur="max-w-2xl"
+      titre={client ? `Fiche de ${client.sigle ?? client.nom}` : 'Nouveau client'}
+      description="Seul le nom est obligatoire. Le reste se complète à tout moment depuis la fiche du client."
       pied={
         <>
           <Bouton variante="fantome" onClick={() => fermer(false)} disabled={f.envoi}>
             Annuler
           </Bouton>
-          <Bouton type="submit" form="formulaire-nouveau-client" icone={Plus} chargement={f.envoi} libelleChargement="Ajout…">
-            Ajouter le client
+          <Bouton type="submit" form="formulaire-client" icone={client ? undefined : Plus} chargement={f.envoi} libelleChargement="Enregistrement…">
+            {client ? 'Enregistrer' : 'Ajouter le client'}
           </Bouton>
         </>
       }
     >
-      <form id="formulaire-nouveau-client" onSubmit={envoyer} noValidate className="grid gap-4">
-        {f.erreurGenerale && <Alerte ton="alerte">{f.erreurGenerale}</Alerte>}
-        <Champ libelle="Nom complet" placeholder="Office National des Chemins de Fer" autoFocus {...f.champ('nom')} />
-        <Champ libelle="Sigle" facultatif placeholder="ONCF" {...f.champ('sigle')} />
-        <Champ libelle="Autres écritures" facultatif placeholder="ONCF, Office des chemins de fer" aide="Séparées par des virgules." {...f.champ('synonymes')} />
-        <Champ libelle="Domaines e-mail" facultatif placeholder="oncf.ma" aide="Pour rattacher ses mails. Séparés par des virgules, sans @." {...f.champ('domainesEmail')} />
+      <form id="formulaire-client" onSubmit={envoyer} noValidate className="grid gap-4 sm:grid-cols-2">
+        {f.erreurGenerale && (
+          <Alerte ton="alerte" className="sm:col-span-2">
+            {f.erreurGenerale}
+          </Alerte>
+        )}
+
+        <Section>Identité</Section>
+        <Champ libelle="Nom complet" className="sm:col-span-2" placeholder="Nom officiel de l’organisme" autoFocus {...f.champ('nom')} />
+        <Champ libelle="Sigle" facultatif placeholder="Abréviation usuelle" {...f.champ('sigle')} />
+        <Selection libelle="Type d’organisme" {...f.champ('typeOrganisme')}>
+          <option value="">—</option>
+          {TYPES_ORGANISMES.map((t) => (
+            <option key={t.code} value={t.code}>
+              {t.nom}
+            </option>
+          ))}
+        </Selection>
+        <Champ libelle="ICE" facultatif inputMode="numeric" placeholder="15 chiffres" {...f.champ('ice')} />
+        <Champ libelle="Identifiant fiscal (IF)" facultatif {...f.champ('identifiantFiscal')} />
+        <Champ libelle="Registre de commerce (RC)" facultatif {...f.champ('registreCommerce')} />
+
+        <Section>Coordonnées</Section>
+        <Champ libelle="Adresse" className="sm:col-span-2" facultatif placeholder="N°, rue, quartier" {...f.champ('adresse')} />
+        <Champ libelle="Ville" facultatif placeholder="Rabat" {...f.champ('ville')} />
+        <Champ libelle="Code postal" facultatif placeholder="10000" {...f.champ('codePostal')} />
+        <Champ libelle="Pays" facultatif {...f.champ('pays')} />
+        <Champ libelle="Téléphone" facultatif type="tel" placeholder="0537 00 00 00" {...f.champ('telephone')} />
+        <Champ libelle="E-mail" facultatif type="email" placeholder="adresse générale de l’organisme" {...f.champ('email')} />
+        <Champ libelle="Site web" facultatif placeholder="www.…" {...f.champ('siteWeb')} />
+
+        <Section>Reconnaissance dans les pièces</Section>
+        <Champ libelle="Autres écritures" facultatif placeholder="Sigle, ancien nom, autre orthographe" aide="Séparées par des virgules : elles aident à le reconnaître dans les pièces lues." {...f.champ('synonymes')} />
+        <Champ libelle="Domaines e-mail" facultatif placeholder="domaine.ma" aide="Pour rattacher ses mails. Séparés par des virgules, sans @." {...f.champ('domainesEmail')} />
+
+        <Section>Notes internes</Section>
+        <ZoneTexte libelle="Notes" facultatif className="sm:col-span-2" placeholder="Horaires de dépôt, bureau d’ordre, particularités…" {...f.champ('notes')} />
       </form>
     </Modale>
   );
 }
+
+/** L'ancien nom, gardé pour « Nouvelle affaire » : un client à ajouter. */
+export const ModaleNouveauClient = ModaleClient;
 
 // ── La page ─────────────────────────────────────────────────────
 
@@ -608,9 +686,194 @@ export function PageClients() {
   );
 }
 
+/** Une ligne de la fiche : libellé à gauche, valeur à droite. */
+function Ligne({ libelle, children }) {
+  return (
+    <div className="grid grid-cols-[9.5rem_minmax(0,1fr)] gap-3 py-2">
+      <dt className="text-[13px] text-encre-3">{libelle}</dt>
+      <dd className="min-w-0 break-words text-[14px]">{children || <span className="text-encre-3">—</span>}</dd>
+    </div>
+  );
+}
+
+/** Les coordonnées et l'identité de l'organisme, comme l'en-tête d'Odoo. */
+function CarteCoordonnees({ c }) {
+  const type = TYPES_ORGANISMES.find((t) => t.code === c.typeOrganisme)?.nom;
+  const adresse = [c.adresse, [c.codePostal, c.ville].filter(Boolean).join(' '), c.pays].filter(Boolean).join(', ');
+  const site = c.siteWeb ? (/^https?:\/\//i.test(c.siteWeb) ? c.siteWeb : `https://${c.siteWeb}`) : null;
+  return (
+    <Carte className="p-5">
+      <h2 className="mb-2 font-semibold">Coordonnées</h2>
+      <dl className="divide-y divide-trait">
+        <Ligne libelle="Type d’organisme">{type}</Ligne>
+        <Ligne libelle="Adresse">{adresse}</Ligne>
+        <Ligne libelle="Téléphone">{c.telephone && <a href={`tel:${c.telephone.replace(/\s/g, '')}`} className="chiffres text-cyan-texte hover:underline">{c.telephone}</a>}</Ligne>
+        <Ligne libelle="E-mail">{c.email && <a href={`mailto:${c.email}`} className="text-cyan-texte hover:underline">{c.email}</a>}</Ligne>
+        <Ligne libelle="Site web">{site && <a href={site} target="_blank" rel="noreferrer" className="text-cyan-texte hover:underline">{c.siteWeb}</a>}</Ligne>
+        <Ligne libelle="ICE">{c.ice && <span className="chiffres">{c.ice}</span>}</Ligne>
+        <Ligne libelle="IF / RC">{[c.identifiantFiscal, c.registreCommerce].filter(Boolean).join(' · ')}</Ligne>
+        <Ligne libelle="Domaines e-mail">{c.domainesEmail.join(', ')}</Ligne>
+      </dl>
+    </Carte>
+  );
+}
+
+const CONTACT_VIDE = { nom: '', fonction: '', telephone: '', mobile: '', email: '', notes: '' };
+
+/** Ajouter ou corriger une personne à joindre chez le client. */
+function ModaleContact({ ouverte, surChangement, clientId, contact }) {
+  const depart = contact ? Object.fromEntries(Object.keys(CONTACT_VIDE).map((k) => [k, contact[k] ?? ''])) : CONTACT_VIDE;
+  const f = useFormulaire(depart);
+  const fileAttente = useQueryClient();
+  const { notifier } = useToasts();
+
+  function fermer(etat) {
+    if (!etat) {
+      f.setValeurs(depart);
+      f.setErreurGenerale('');
+    }
+    surChangement(etat);
+  }
+
+  const envoyer = f.soumettre(schemaContactClient, async (v) => {
+    await api(contact ? `/api/contacts-clients/${contact.id}` : `/api/clients/${clientId}/contacts`, { methode: contact ? 'PATCH' : 'POST', corps: v });
+    await fileAttente.invalidateQueries({ queryKey: ['client'] });
+    fileAttente.invalidateQueries({ queryKey: ['fil', 'client'] });
+    notifier({ titre: contact ? 'Contact modifié' : 'Contact ajouté', message: v.nom, ton: 'ok' });
+    fermer(false);
+  });
+
+  return (
+    <Modale
+      ouverte={ouverte}
+      surChangement={fermer}
+      titre={contact ? `Modifier ${contact.nom}` : 'Nouveau contact'}
+      description="Une personne à joindre chez ce client : le chef de service, l’ordonnateur, le technicien du chantier."
+      pied={
+        <>
+          <Bouton variante="fantome" onClick={() => fermer(false)} disabled={f.envoi}>
+            Annuler
+          </Bouton>
+          <Bouton type="submit" form="formulaire-contact" chargement={f.envoi} libelleChargement="Enregistrement…">
+            {contact ? 'Enregistrer' : 'Ajouter le contact'}
+          </Bouton>
+        </>
+      }
+    >
+      <form id="formulaire-contact" onSubmit={envoyer} noValidate className="grid gap-4 sm:grid-cols-2">
+        {f.erreurGenerale && (
+          <Alerte ton="alerte" className="sm:col-span-2">
+            {f.erreurGenerale}
+          </Alerte>
+        )}
+        <Champ libelle="Nom" placeholder="Prénom et nom" autoFocus {...f.champ('nom')} />
+        <Champ libelle="Fonction" facultatif placeholder="Chef de service, ordonnateur…" {...f.champ('fonction')} />
+        <Champ libelle="Téléphone" facultatif type="tel" placeholder="0537 00 00 00" {...f.champ('telephone')} />
+        <Champ libelle="Mobile" facultatif type="tel" placeholder="06 00 00 00 00" {...f.champ('mobile')} />
+        <Champ libelle="E-mail" facultatif type="email" className="sm:col-span-2" placeholder="prenom.nom@domaine.ma" {...f.champ('email')} />
+        <ZoneTexte libelle="Notes" facultatif className="sm:col-span-2" lignes={2} {...f.champ('notes')} />
+      </form>
+    </Modale>
+  );
+}
+
+/** Les personnes à joindre, comme l'onglet « Contacts » d'Odoo. */
+function CarteContacts({ c, peutGerer }) {
+  const [edition, setEdition] = useState(null); // null | 'nouveau' | un contact
+  const [aRetirer, setARetirer] = useState(null);
+  const [retrait, setRetrait] = useState(false);
+  const fileAttente = useQueryClient();
+  const { notifier } = useToasts();
+
+  async function retirer() {
+    setRetrait(true);
+    try {
+      await api(`/api/contacts-clients/${aRetirer.id}`, { methode: 'DELETE' });
+      await fileAttente.invalidateQueries({ queryKey: ['client'] });
+      fileAttente.invalidateQueries({ queryKey: ['fil', 'client'] });
+      notifier({ titre: 'Contact retiré', message: aRetirer.nom, ton: 'ok' });
+      setARetirer(null);
+    } catch (erreur) {
+      notifier({ titre: 'Retrait impossible', message: erreur.message, ton: 'alerte' });
+    } finally {
+      setRetrait(false);
+    }
+  }
+
+  return (
+    <Carte id="contacts-client" className="scroll-mt-20">
+      <div className="flex items-center justify-between gap-3 border-b border-trait px-5 py-3">
+        <h2 className="font-semibold">
+          Contacts <span className="chiffres ml-1 text-encre-3">{c.contacts.length}</span>
+        </h2>
+        {peutGerer && (
+          <Bouton variante="secondaire" taille="petit" icone={Plus} onClick={() => setEdition('nouveau')}>
+            Ajouter
+          </Bouton>
+        )}
+      </div>
+      {c.contacts.length === 0 ? (
+        <p className="px-5 py-6 text-[14px] text-encre-3">Aucune personne enregistrée chez ce client.</p>
+      ) : (
+        <ul className="divide-y divide-trait">
+          {c.contacts.map((p) => (
+            <li key={p.id} className="flex flex-wrap items-start gap-3 px-5 py-3.5">
+              <PastilleClient client={{ nom: p.nom }} className="size-9" />
+              <div className="min-w-0 flex-1">
+                <p className="font-medium">{p.nom}</p>
+                {p.fonction && <p className="text-[13px] text-encre-2">{p.fonction}</p>}
+                <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
+                  {p.telephone && <a href={`tel:${p.telephone.replace(/\s/g, '')}`} className="chiffres text-cyan-texte hover:underline">{p.telephone}</a>}
+                  {p.mobile && <a href={`tel:${p.mobile.replace(/\s/g, '')}`} className="chiffres text-cyan-texte hover:underline">{p.mobile}</a>}
+                  {p.email && <a href={`mailto:${p.email}`} className="text-cyan-texte hover:underline">{p.email}</a>}
+                </p>
+                {p.notes && <p className="mt-1 text-[13px] whitespace-pre-line text-encre-3">{p.notes}</p>}
+              </div>
+              {peutGerer && (
+                <div className="flex gap-1">
+                  <Bouton variante="fantome" taille="petit" onClick={() => setEdition(p)}>
+                    Modifier
+                  </Bouton>
+                  <Bouton variante="fantome" taille="petit" onClick={() => setARetirer(p)}>
+                    Retirer
+                  </Bouton>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {peutGerer && (
+        <>
+          <ModaleContact
+            key={edition === 'nouveau' ? 'nouveau' : (edition?.id ?? 'aucun')}
+            ouverte={edition !== null}
+            surChangement={(o) => !o && setEdition(null)}
+            clientId={c.id}
+            contact={edition === 'nouveau' ? null : edition}
+          />
+          <Confirmation
+            ouverte={aRetirer !== null}
+            surChangement={(o) => !o && setARetirer(null)}
+            titre={`Retirer ${aRetirer?.nom ?? ''} ?`}
+            description="Cette personne ne figurera plus parmi les contacts du client."
+            libelle="Retirer"
+            chargement={retrait}
+            surConfirmer={retirer}
+          />
+        </>
+      )}
+    </Carte>
+  );
+}
+
 export function PageFicheClient() {
   const { id } = useParams();
   const client = useQuery({ queryKey: ['client', id], queryFn: () => api(`/api/clients/${id}`) });
+  const { droits } = useSession();
+  const peutGerer = droits.can('gerer', 'Client');
+  const [edition, setEdition] = useState(false);
 
   if (client.isPending) {
     return (
@@ -633,10 +896,41 @@ export function PageFicheClient() {
         surtitre={c.sigle ?? undefined}
         titre={c.nom}
         description={c.synonymes.length ? `Aussi écrit : ${c.synonymes.join(', ')}` : undefined}
-        actions={c.interne ? <Badge ton="bordeaux">Société interne</Badge> : <Badge ton="cyan">{c.marches.length} marchés</Badge>}
+        actions={
+          <div className="flex items-center gap-3">
+            {c.interne ? <Badge ton="bordeaux">Société interne</Badge> : <Badge ton="cyan">{c.marches.length} marchés</Badge>}
+            {peutGerer && (
+              <Bouton variante="secondaire" taille="petit" icone={Pencil} onClick={() => setEdition(true)}>
+                Modifier la fiche
+              </Bouton>
+            )}
+          </div>
+        }
       />
 
-      <Carte>
+      {/* Les boutons de raccourci d'Odoo : un chiffre, et on y va. */}
+      <div className="mb-5 flex flex-wrap gap-2">
+        <BoutonRaccourci icone={FolderKanban} chiffre={c.marches.length} libelle="Marchés" surClic={() => document.getElementById('marches-client')?.scrollIntoView({ behavior: 'smooth' })} />
+        <BoutonRaccourci icone={FileText} chiffre={c.nbDocuments ?? 0} libelle="Pièces" vers={`/documents?clientId=${c.id}&archives=tous`} />
+        {droits.can('lire', 'Mail') && <BoutonRaccourci icone={Mail} chiffre={c.nbMails ?? 0} libelle="Mails" surClic={allerAuFil} />}
+        <BoutonRaccourci icone={Users} chiffre={c.contacts.length} libelle="Contacts" surClic={() => document.getElementById('contacts-client')?.scrollIntoView({ behavior: 'smooth' })} />
+      </div>
+
+      <div className="mb-5 grid gap-5 lg:grid-cols-2">
+        <CarteCoordonnees c={c} />
+        <CarteContacts c={c} peutGerer={peutGerer} />
+      </div>
+
+      {c.notes && (
+        <Carte className="mb-5 p-5">
+          <h2 className="mb-2 font-semibold">Notes internes</h2>
+          <p className="text-[14px] whitespace-pre-line text-encre-2">{c.notes}</p>
+        </Carte>
+      )}
+
+      {peutGerer && <ModaleClient key={c.modifieLe ?? c.id} ouverte={edition} surChangement={setEdition} client={c} />}
+
+      <Carte id="marches-client" className="scroll-mt-20">
         <h2 className="border-b border-trait px-5 py-3.5 font-semibold">Marchés</h2>
         {c.marches.length === 0 ? (
           <EtatVide titre="Aucun marché">Ce client ne porte que des attestations, ou ses marchés ne sont pas encore versés.</EtatVide>
@@ -659,12 +953,7 @@ export function PageFicheClient() {
         )}
       </Carte>
 
-      <Carte className="mt-5">
-        <h2 className="border-b border-trait px-5 py-3.5 font-semibold">Échanges</h2>
-        <EtatVide illustration="chantier" titre="Les mails avec ce client">
-          La chronologie des messages reçus et envoyés, par conversation, arrive en phase 8.
-        </EtatVide>
-      </Carte>
+      <FilActivite type="client" id={c.id} className="mt-5" />
     </div>
   );
 }

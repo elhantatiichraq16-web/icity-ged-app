@@ -6,7 +6,7 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Archive, ArchiveRestore, ArrowLeft, Check, ChevronRight, FileText, Upload, X } from 'lucide-react';
+import { AlertTriangle, Archive, ArchiveRestore, ArrowLeft, Building2, Check, ChevronRight, FileText, Mail, ShoppingCart, Upload, X } from 'lucide-react';
 import { CONSERVATIONS, ORDRE_PHASES, PHASES, PIECES_CYCLE, STATUTS_AFFAIRE } from '@icity/commun/marches';
 import { api } from '../api.js';
 import { useSession } from '../auth/session.jsx';
@@ -19,23 +19,25 @@ import { cx } from '../ui/cx.js';
 import { Confirmation } from '../ui/Modale.jsx';
 import { useToasts } from '../ui/Toasts.jsx';
 import { useArchivage } from './Archives.jsx';
+import { allerAuFil, BoutonRaccourci, FilActivite } from './FilActivite.jsx';
 import { ETATS_OCR } from './Documents.jsx';
 import { BadgeEtatMarche, CLE_MARCHES } from './Marches.jsx';
 
 // Chargé à l'ouverture de l'onglet seulement, comme l'écran Achats lui-même.
 const AchatsDuMarche = lazy(() => import('./Achats.jsx').then((m) => ({ default: m.AchatsDuMarche })));
 
+// Les échanges et le journal ne sont plus des onglets : ils vivent dans le
+// fil d'activité, sous la fiche, comme dans Odoo.
 const ONGLETS = [
   { cle: 'documents', libelle: 'Documents' },
   { cle: 'achats', libelle: 'Achats' },
-  { cle: 'echanges', libelle: 'Échanges', phase: 8 },
-  { cle: 'journal', libelle: 'Journal', phase: 9 },
   { cle: 'informations', libelle: 'Informations' },
 ];
 
 export function PageFicheMarche() {
   const { id } = useParams();
   const [onglet, setOnglet] = useState('documents');
+  const { droits } = useSession();
   const marche = useQuery({ queryKey: ['marche', id], queryFn: () => api(`/api/marches/${id}`) });
 
   if (marche.isPending) {
@@ -68,6 +70,14 @@ export function PageFicheMarche() {
 
       <EnTeteMarche m={m} />
 
+      {/* Les boutons de raccourci d'Odoo : un chiffre, et on y va. */}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <BoutonRaccourci icone={FileText} chiffre={m.documents.length} libelle={m.documents.length > 1 ? 'Pièces' : 'Pièce'} surClic={() => setOnglet('documents')} />
+        {droits.can('lire', 'Achat') && <BoutonRaccourci icone={ShoppingCart} chiffre={m.nbAchats ?? 0} libelle="Achats" surClic={() => setOnglet('achats')} />}
+        {droits.can('lire', 'Mail') && <BoutonRaccourci icone={Mail} chiffre={m.nbMails ?? 0} libelle="Mails" surClic={allerAuFil} />}
+        {m.client && <BoutonRaccourci icone={Building2} chiffre={m.client.sigle ?? 'Client'} libelle={m.client.sigle ? 'Fiche client' : m.client.nom} vers={`/clients/${m.client.id}`} />}
+      </div>
+
       <nav aria-label="Sections de la fiche" className="-mx-1 mt-7 mb-5 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-trait px-1">
         {ONGLETS.map((o) => (
           <button
@@ -99,15 +109,8 @@ export function PageFicheMarche() {
         </Suspense>
       )}
       {onglet === 'informations' && <OngletInformations m={m} />}
-      {(onglet === 'echanges' || onglet === 'journal') && (
-        <Carte>
-          <EtatVide illustration="chantier" titre={onglet === 'echanges' ? 'Les échanges de ce marché' : 'Le journal de ce marché'}>
-            {onglet === 'echanges'
-              ? 'Les mails reçus et envoyés au sujet de ce marché apparaîtront ici, par conversation (phase 8).'
-              : 'Chaque modification et chaque validation y laisseront une trace (phase 9).'}
-          </EtatVide>
-        </Carte>
-      )}
+
+      <FilActivite type="marche" id={m.id} className="mt-6" />
     </div>
   );
 }
@@ -417,6 +420,8 @@ function OngletInformations({ m }) {
       }),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ['marche', String(m.id)] });
+      // La modification s'inscrit dans le fil d'activité.
+      client.invalidateQueries({ queryKey: ['fil', 'marche'] });
       client.invalidateQueries({ queryKey: CLE_MARCHES });
       notifier({ titre: 'Marché enregistré', ton: 'ok' });
     },
