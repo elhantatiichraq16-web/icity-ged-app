@@ -377,7 +377,7 @@ function OngletSuivi({ achats, commandes, prix, gerer, surImporter }) {
           <ul className="grid gap-2">
             {aPayer.slice(0, 6).map((c) => (
               <li key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13.5px]">
-                <span className="font-medium">{c.fournisseur?.nom}</span>
+                <span className="font-medium">{c.fournisseur ? <NomFournisseur f={c.fournisseur} /> : null}</span>
                 <Badge ton={ETATS_PAIEMENT[c.etat].ton}>{ETATS_PAIEMENT[c.etat].nom}</Badge>
                 <span className="chiffres">{c.etat === 'avance_a_payer' ? `avance de ${dh(c.avance)}` : `reste ${dh(c.reste)}`}</span>
                 <span className={cx('text-encre-3', c.echeance && c.echeance < aujourdhui() && 'font-medium text-alerte-texte')}>{c.echeance ? `échéance ${dateFr(c.echeance)}` : 'sans échéance'}</span>
@@ -421,6 +421,17 @@ function ChoixStatut({ ligne }) {
         </option>
       ))}
     </select>
+  );
+}
+
+/** Le nom d'un fournisseur : un lien vers sa fiche, pour qui peut la lire (comme dans Odoo). */
+function NomFournisseur({ f }) {
+  const { droits } = useSession();
+  if (!droits.can('lire', 'Fournisseur')) return f.nom;
+  return (
+    <Link to={`/achats/fournisseurs/${f.id}`} className="text-cyan-texte hover:underline">
+      {f.nom}
+    </Link>
   );
 }
 
@@ -530,7 +541,7 @@ function GroupeMateriel({ groupe, colonnes, prix, gerer, surModifier }) {
               <td className={cx('chiffres py-2.5 text-right whitespace-nowrap', l.marge !== null && l.marge < 0 && 'font-semibold text-alerte-texte')}>{pourcent(l.marge)}</td>
             </>
           )}
-          <td className="py-2.5">{l.fournisseur?.nom ?? <span className="text-encre-3">à définir</span>}</td>
+          <td className="py-2.5">{l.fournisseur ? <NomFournisseur f={l.fournisseur} /> : <span className="text-encre-3">à définir</span>}</td>
           <td className="py-2">
             {gerer ? <ChoixStatut ligne={l} /> : <Badge ton={statutAchat(l.statut).ton}>{statutAchat(l.statut).nom}</Badge>}
             <p className="mt-1 text-[13px] whitespace-nowrap">
@@ -1025,7 +1036,7 @@ function OngletPaiements({ commandes, gerer, surNouvelle, surModifier }) {
               {liste.map((c) => (
                 <tr key={c.id} className="border-b border-trait align-top last:border-b-0">
                   <td className="px-3 py-2.5">
-                    <p className="font-medium">{c.fournisseur?.nom}</p>
+                    <p className="font-medium">{c.fournisseur ? <NomFournisseur f={c.fournisseur} /> : null}</p>
                     <p className="text-[13px] text-encre-3">{c.marche?.reference}</p>
                   </td>
                   <td className="max-w-[14rem] px-3 py-2.5 text-[13px] text-encre-2" title={c.lignes.map((l) => l.designation).join('\n')}>
