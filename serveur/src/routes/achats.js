@@ -24,16 +24,27 @@ import {
   schemaModificationLigneAchat,
   statutAchat,
   total,
+  TVA,
 } from '@icity/commun/achats';
+import crypto from 'node:crypto';
+import { createWriteStream } from 'node:fs';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
 import { schemaContactClient } from '@icity/commun/schemas';
 import { db } from '../db.js';
 import { ErreurHttp, introuvable, valider } from '../erreurs.js';
 import { exiger } from '../plugins/authentification.js';
+import { genererBonCommande, numeroBonCommande } from '../services/bon-commande.js';
+import { envoyerMail } from '../services/courriel-sortant.js';
 import { importerClasseurAchats } from '../services/import-achats.js';
 import { journaliser } from '../services/journal.js';
 import { ErreurClasseur } from '../services/lecture-xlsx.js';
 import { nomFichier, versCsv } from '../services/export-csv.js';
+import { FORMATS, TAILLE_MAX, verserFichier } from '../services/stockage.js';
+import { appliquerPiece } from '../services/suivi-achats.js';
 
 const TAILLE_MAX_CLASSEUR = 10 * 1024 * 1024;
 const INCLURE = {
@@ -544,6 +555,202 @@ export default async function routesAchats(app) {
       requete.log,
     );
     return vueCommande(await db.commandeFournisseur.findUnique({ where: { id }, include: INCLURE_COMMANDE }));
+  });
+
+  // ── La fiche d'une commande, sur le modèle d'Odoo ─────────────
+  /** Les pièces d'un fournisseur qu'on range sur sa commande. */
+  const TYPES_PIECES = { BCF: 'Bon de commande', BLF: 'Bon de livraison', FACF: 'Facture' };
+
+  /**
+   * Les pièces d'une commande contiennent ses prix : elles sont rangées en
+   * « Confidentiel » (direction et administrateur), et celui qui les verse
+   * les voit toujours.
+   */
+  const CONFIDENTIALITE_PIECES = 'confidentiel';
+
+  /** La commande complète, telle que la fiche la montre. */
+  async function chargerCommande(id) {
+    const c = await db.commandeFournisseur.findUnique({
+      where: { id },
+      include: {
+        marche: { select: { id: true, reference: true, objet: true } },
+        fournisseur: true,
+        lignes: { orderBy: { ordre: 'asc' }, include: { fournisseur: { select: { id: true, nom: true } } } },
+      },
+    });
+    if (!c) throw introuvable('Commande');
+    return c;
+  }
+
+  app.get('/api/commandes-fournisseur/:id', { preHandler: exiger('lire', 'PrixAchat') }, async (requete) => {
+    const c = await chargerCommande(Number(requete.params.id) || 0);
+    const [pieces, internes] = await Promise.all([
+      db.document.findMany({
+        where: { commandeFournisseurId: c.id, supprimeLe: null },
+        include: { typeDocument: true },
+        orderBy: { creeLe: 'asc' },
+      }),
+      // Les sociétés qui peuvent commander : celles du groupe.
+      db.client.findMany({ where: { interne: true }, select: { id: true, nom: true }, orderBy: { nom: 'asc' } }),
+    ]);
+    const ht = c.lignes.reduce((t, l) => t + (total(nombre(l.puAchat), nombre(l.quantite)) ?? 0), 0);
+    return {
+      ...vueCommande({ ...c, fournisseur: { id: c.fournisseur.id, nom: c.fournisseur.nom } }),
+      numero: numeroBonCommande(c),
+      fournisseur: { id: c.fournisseur.id, nom: c.fournisseur.nom, email: c.fournisseur.email, contact: c.fournisseur.contact },
+      lignes: c.lignes.map((l) => vueLigne(l, true)),
+      totaux: { ht, tva: ht * TVA, ttc: ht * (1 + TVA) },
+      pieces: pieces.map((d) => ({ id: d.id, titre: d.titre, type: d.typeDocument?.code ?? null, typeNom: d.typeDocument?.nom ?? null, creeLe: d.creeLe })),
+      internes,
+    };
+  });
+
+  /**
+   * Le bon de commande en PDF, rangé comme pièce de la commande (type BCF).
+   * Le même contenu le même jour donne le même fichier : on ne le range
+   * qu'une fois.
+   */
+  async function rangerBonCommande(c, emetteurId, requete) {
+    const emetteur = emetteurId ? await db.client.findFirst({ where: { id: emetteurId, interne: true } }) : await db.client.findFirst({ where: { interne: true }, orderBy: { nom: 'asc' } });
+    const octets = await genererBonCommande({ commande: c, emetteur });
+    const numero = numeroBonCommande(c);
+    const provisoire = path.join(os.tmpdir(), `icity-bc-${crypto.randomUUID()}.pdf`);
+    try {
+      await fs.writeFile(provisoire, octets);
+      const type = await db.typeDocument.findUnique({ where: { code: 'BCF' } });
+      const { document, cree } = await verserFichier(provisoire, {
+        titre: `Bon de commande ${numero} — ${c.fournisseur.nom}`,
+        nomOrigine: `${numero}.pdf`,
+        marcheId: c.marcheId,
+        typeDocumentId: type?.id ?? null,
+        commandeFournisseurId: c.id,
+        confidentialite: CONFIDENTIALITE_PIECES,
+        source: 'versement',
+        verseParId: requete.utilisateur.id,
+      });
+      if (cree) {
+        await journaliser(
+          { utilisateurId: requete.utilisateur.id, action: 'commande.bon_genere', objetType: 'CommandeFournisseur', objetId: c.id, commentaire: numero, ip: requete.ip },
+          requete.log,
+        );
+      }
+      return document;
+    } finally {
+      await fs.rm(provisoire, { force: true });
+    }
+  }
+
+  app.post('/api/commandes-fournisseur/:id/bon-de-commande', { preHandler: exiger('gerer', 'Achat') }, async (requete, reponse) => {
+    const { emetteurId } = valider(z.object({ emetteurId: z.number().int().positive().nullish() }), requete.body ?? {});
+    const c = await chargerCommande(Number(requete.params.id) || 0);
+    const document = await rangerBonCommande(c, emetteurId, requete);
+    return reponse.code(201).send({ document: { id: document.id, titre: document.titre } });
+  });
+
+  /**
+   * Envoyer le bon de commande au fournisseur, par le compte de messagerie de
+   * l'application : le PDF part en pièce jointe, le mail s'archive avec le
+   * marché, et la commande passe « Commandée » (ses lignes partent, leur
+   * livraison se date d'après le délai du fournisseur).
+   */
+  app.post('/api/commandes-fournisseur/:id/envoyer', { preHandler: exiger('gerer', 'Achat') }, async (requete) => {
+    const donnees = valider(
+      z.object({
+        emetteurId: z.number().int().positive().nullish(),
+        a: z.array(z.email({ error: 'Adresse e-mail invalide.' })).min(1, { error: 'Indiquez l’adresse du fournisseur.' }).max(10),
+        objet: z.string().trim().min(2, { error: 'Écrivez l’objet.' }).max(255),
+        texte: z.string().trim().min(2, { error: 'Écrivez le message.' }).max(10_000),
+      }),
+      requete.body,
+    );
+    const compte = await db.compteMail.findFirst({ where: { actif: true }, orderBy: { id: 'asc' } });
+    if (!compte) throw new ErreurHttp(422, 'Aucun compte d’envoi n’est configuré : voyez Paramètres → Comptes mail.');
+
+    const c = await chargerCommande(Number(requete.params.id) || 0);
+    const document = await rangerBonCommande(c, donnees.emetteurId, requete);
+    let mail;
+    try {
+      mail = await envoyerMail({ compteId: compte.id, a: donnees.a, objet: donnees.objet, texte: donnees.texte, documentIds: [document.id], marcheId: c.marcheId, log: requete.log });
+    } catch (erreur) {
+      throw new ErreurHttp(502, 'L’envoi a échoué.', { erreurs: { envoi: erreur.message } });
+    }
+
+    const aujourdhuiIso = new Date().toISOString().slice(0, 10);
+    const effets = await appliquerPiece({ commande: c, type: 'BCF', date: aujourdhuiIso, document, utilisateurId: requete.utilisateur.id });
+    await journaliser(
+      {
+        utilisateurId: requete.utilisateur.id,
+        action: 'commande.envoyee',
+        objetType: 'CommandeFournisseur',
+        objetId: c.id,
+        commentaire: `${numeroBonCommande(c)} envoyé à ${donnees.a.join(', ')}`,
+        ip: requete.ip,
+      },
+      requete.log,
+    );
+    return { mailId: mail.id, document: { id: document.id, titre: document.titre }, ...effets };
+  });
+
+  /**
+   * Verser une pièce du fournisseur sur sa commande : un bon de commande
+   * signé, un bon de livraison (la réception, totale ou de certaines lignes),
+   * une facture. La commande avance d'elle-même (services/suivi-achats.js).
+   */
+  app.post('/api/commandes-fournisseur/:id/pieces', { preHandler: exiger('gerer', 'Achat') }, async (requete, reponse) => {
+    const c = await chargerCommande(Number(requete.params.id) || 0);
+    const fichier = await requete.file({ limits: { fileSize: TAILLE_MAX } });
+    if (!fichier) throw new ErreurHttp(422, 'Aucun fichier reçu.');
+    const extension = path.extname(fichier.filename ?? '').toLowerCase();
+    if (!FORMATS[extension]) throw new ErreurHttp(422, `Format refusé : ${extension || 'sans extension'}.`);
+
+    const champ = (nom) => {
+      const v = fichier.fields?.[nom];
+      return (Array.isArray(v) ? v[0]?.value : v?.value) ?? '';
+    };
+    const { type, date, lignes } = valider(
+      z.object({
+        type: z.enum(Object.keys(TYPES_PIECES), { error: 'Choisissez le type de pièce.' }),
+        date: z.iso.date({ error: 'Indiquez la date de la pièce.' }),
+        lignes: z.array(z.coerce.number().int().positive()).max(500),
+      }),
+      { type: champ('type'), date: champ('date'), lignes: champ('lignes') ? String(champ('lignes')).split(',').filter(Boolean) : [] },
+    );
+
+    const provisoire = path.join(os.tmpdir(), `icity-piece-${crypto.randomUUID()}${extension}`);
+    try {
+      await pipeline(fichier.file, createWriteStream(provisoire));
+      if (fichier.file.truncated) throw new ErreurHttp(413, 'Fichier trop lourd : 50 Mo au plus.');
+      const typeDocument = await db.typeDocument.findUnique({ where: { code: type } });
+      const { document, cree, doublon } = await verserFichier(provisoire, {
+        titre: `${TYPES_PIECES[type]} — ${c.fournisseur.nom}`,
+        nomOrigine: fichier.filename,
+        marcheId: c.marcheId,
+        typeDocumentId: typeDocument?.id ?? null,
+        commandeFournisseurId: c.id,
+        confidentialite: CONFIDENTIALITE_PIECES,
+        source: 'versement',
+        verseParId: requete.utilisateur.id,
+      });
+      if (!cree) {
+        return reponse.code(409).send({ message: 'Ce fichier est déjà au fonds, au bit près.', doublon: { id: doublon.id, titre: doublon.titre } });
+      }
+      const effets = await appliquerPiece({ commande: c, type, date, lignes, document, utilisateurId: requete.utilisateur.id });
+      await journaliser(
+        {
+          utilisateurId: requete.utilisateur.id,
+          action: 'commande.piece_versee',
+          objetType: 'CommandeFournisseur',
+          objetId: c.id,
+          commentaire: `${TYPES_PIECES[type]} du ${date}`,
+          apres: effets,
+          ip: requete.ip,
+        },
+        requete.log,
+      );
+      return reponse.code(201).send({ document: { id: document.id, titre: document.titre }, ...effets });
+    } finally {
+      await fs.rm(provisoire, { force: true });
+    }
   });
 
   app.delete('/api/commandes-fournisseur/:id', { preHandler: exiger('gerer', 'Achat') }, async (requete) => {

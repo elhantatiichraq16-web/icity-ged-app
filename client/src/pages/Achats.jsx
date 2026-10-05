@@ -916,13 +916,9 @@ function KanbanCommandes({ liste, gerer, surModifier }) {
                   );
                   return (
                     <li key={c.id} className="rounded-[10px] border border-trait bg-surface shadow-[var(--ombre)]">
-                      {gerer ? (
-                        <button type="button" onClick={() => surModifier(c)} className="block w-full p-3 text-left hover:bg-surface-2">
-                          {contenu}
-                        </button>
-                      ) : (
-                        <div className="p-3">{contenu}</div>
-                      )}
+                      <Link to={`/achats/commandes/${c.id}`} className="block w-full rounded-[10px] p-3 text-left hover:bg-surface-2">
+                        {contenu}
+                      </Link>
                     </li>
                   );
                 })}
@@ -932,7 +928,7 @@ function KanbanCommandes({ liste, gerer, surModifier }) {
           );
         })}
       </div>
-      <p className="mt-2 text-[13px] text-encre-3">L’étape suit la commande : bon de commande daté, lignes livrées, facture reçue, solde payé.</p>
+      <p className="mt-2 text-[13px] text-encre-3">L’étape suit la commande : bon de commande envoyé, bon de livraison versé, facture reçue, solde payé. Ouvrez une commande pour la faire avancer.</p>
     </div>
   );
 }
@@ -1037,7 +1033,9 @@ function OngletPaiements({ commandes, gerer, surNouvelle, surModifier }) {
                 <tr key={c.id} className="border-b border-trait align-top last:border-b-0">
                   <td className="px-3 py-2.5">
                     <p className="font-medium">{c.fournisseur ? <NomFournisseur f={c.fournisseur} /> : null}</p>
-                    <p className="text-[13px] text-encre-3">{c.marche?.reference}</p>
+                    <Link to={`/achats/commandes/${c.id}`} className="text-[13px] text-cyan-texte hover:underline">
+                      Ouvrir la commande · {c.marche?.reference}
+                    </Link>
                   </td>
                   <td className="max-w-[14rem] px-3 py-2.5 text-[13px] text-encre-2" title={c.lignes.map((l) => l.designation).join('\n')}>
                     {c.lignes.length ? c.lignes.map((l) => l.numero ?? '·').join(', ') : '—'}
@@ -1087,7 +1085,7 @@ function OngletPaiements({ commandes, gerer, surNouvelle, surModifier }) {
 
 const COMMANDE_VIDE = { marcheId: '', fournisseurId: '', lignes: [], montantTtc: '', avancePourcent: '0', modalite: 'virement', dateFacture: '', echeance: '', avancePayeeLe: '', soldePayeLe: '', notes: '' };
 
-function ModaleCommande({ ouverte, surChangement, commande, marcheIdParDefaut }) {
+export function ModaleCommande({ ouverte, surChangement, commande, marcheIdParDefaut }) {
   return (
     <Modale ouverte={ouverte} surChangement={surChangement} titre={commande ? 'Modifier la commande' : 'Nouvelle commande'} description="L’avance, le reste et l’échéance se calculent seuls." largeur="max-w-2xl">
       {ouverte && <FormulaireCommande commande={commande} marcheIdParDefaut={marcheIdParDefaut} fermer={() => surChangement(false)} />}

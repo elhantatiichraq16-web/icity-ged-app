@@ -411,6 +411,7 @@ model CommandeFournisseur {
   lignes LigneAchat[]
   /// Le bon de commande, les bons de livraison et les factures du fournisseur.
   pieces Document[]
+  activites Activite[]
 
   @@index([marcheId])
   @@index([fournisseurId])
@@ -713,13 +714,15 @@ model Activite {
   assigne      Utilisateur  @relation("ActivitesAssignees", fields: [assigneId], references: [id], onDelete: Cascade)
   creeParId    Int?         @map("cree_par")
   creePar      Utilisateur? @relation("ActivitesCreees", fields: [creeParId], references: [id], onDelete: SetNull)
-  /// La fiche qui porte l'activité : un marché, un client ou un fournisseur.
+  /// La fiche qui porte l'activité : un marché, un client, un fournisseur ou une commande.
   marcheId     Int?         @map("marche_id")
   marche       Marche?      @relation(fields: [marcheId], references: [id], onDelete: Cascade)
   clientId     Int?         @map("client_id")
   client       Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
   fournisseurId Int?        @map("fournisseur_id")
   fournisseur  Fournisseur? @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
+  commandeId   Int?         @map("commande_id")
+  commande     CommandeFournisseur? @relation(fields: [commandeId], references: [id], onDelete: Cascade)
   faiteLe      DateTime?    @map("faite_le")
   compteRendu  String?      @map("compte_rendu") @db.Text
   creeLe       DateTime     @default(now()) @map("cree_le")
@@ -729,5 +732,6 @@ model Activite {
   @@index([marcheId])
   @@index([clientId])
   @@index([fournisseurId])
+  @@index([commandeId])
   @@map("activites")
 }

@@ -26,7 +26,7 @@ const ACTIONS_TAIRES = ['document.telecharge'];
 const LIMITE = 200;
 
 /** Les fiches qui ont un fil : leur nom dans l'URL, leur type au journal. */
-const TYPES = { marche: 'Marche', client: 'Client', fournisseur: 'Fournisseur' };
+const TYPES = { marche: 'Marche', client: 'Client', fournisseur: 'Fournisseur', commande: 'CommandeFournisseur' };
 
 /** Les noms lisibles des champs, pour dire ce qui a changé. */
 const CHAMPS = {
@@ -85,6 +85,11 @@ const PHRASES = {
   'client.contact_ajoute': 'a ajouté un contact',
   'client.contact_modifie': 'a modifié un contact',
   'client.contact_retire': 'a retiré un contact',
+  'commande.creee': 'a créé la commande',
+  'commande.modifiee': 'a modifié la commande',
+  'commande.bon_genere': 'a préparé le bon de commande',
+  'commande.envoyee': 'a envoyé le bon de commande au fournisseur',
+  'commande.piece_versee': 'a versé une pièce du fournisseur',
   'fournisseur.cree': 'a créé le fournisseur',
   'fournisseur.modifie': 'a modifié la fiche',
   'fournisseur.fusionne': 'a fusionné un doublon dans cette fiche',
@@ -180,7 +185,10 @@ function elementJournal(l, noms, pieces) {
     texte: (phrase ?? l.action).replace('{piece}', nomPiece),
     pieceId: piece?.id ?? null,
     changements,
-    commentaire: l.action.startsWith('circuit.') || l.action.startsWith('activite.') || ['achats.import', 'fournisseur.fusionne'].includes(l.action) ? l.commentaire : null,
+    commentaire:
+      l.action.startsWith('circuit.') || l.action.startsWith('activite.') || ['achats.import', 'fournisseur.fusionne', 'commande.bon_genere', 'commande.envoyee', 'commande.piece_versee'].includes(l.action)
+        ? l.commentaire
+        : null,
   };
 }
 
@@ -209,9 +217,15 @@ export default async function routesFil(app) {
     const id = Number(requete.params.id) || 0;
     // Les fournisseurs (et leurs prix) restent aux achats et à la direction.
     if (type === 'Fournisseur' && !requete.droits.can('lire', 'Fournisseur')) throw interdit();
-    const lire = { Marche: () => db.marche.findUnique({ where: { id } }), Client: () => db.client.findUnique({ where: { id } }), Fournisseur: () => db.fournisseur.findUnique({ where: { id } }) };
+    if (type === 'CommandeFournisseur' && !requete.droits.can('lire', 'PrixAchat')) throw interdit();
+    const lire = {
+      Marche: () => db.marche.findUnique({ where: { id } }),
+      Client: () => db.client.findUnique({ where: { id } }),
+      Fournisseur: () => db.fournisseur.findUnique({ where: { id } }),
+      CommandeFournisseur: () => db.commandeFournisseur.findUnique({ where: { id } }),
+    };
     const existe = type ? await lire[type]() : null;
-    if (!existe) throw introuvable({ Client: 'Client', Fournisseur: 'Fournisseur' }[type] ?? 'Marché');
+    if (!existe) throw introuvable({ Client: 'Client', Fournisseur: 'Fournisseur', CommandeFournisseur: 'Commande' }[type] ?? 'Marché');
     return { type, id };
   }
 
@@ -244,7 +258,7 @@ export default async function routesFil(app) {
     });
 
     // Un mail se rattache à un marché ou à un client, pas à un fournisseur.
-    const mails = type !== 'Fournisseur' && requete.droits.can('lire', 'Mail')
+    const mails = ['Marche', 'Client'].includes(type) && requete.droits.can('lire', 'Mail')
       ? await db.mail.findMany({
           where: type === 'Marche' ? { marcheId: id } : { clientId: id },
           include: { piecesJointes: true },

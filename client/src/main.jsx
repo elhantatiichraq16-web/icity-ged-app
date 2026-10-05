@@ -10,6 +10,7 @@ import { Coquille } from './coquille/Coquille.jsx';
 import { PageChoisirMotDePasse, PageConnexion, PageDeuxFacteurs, PageMotDePasseOublie } from './pages/auth/PagesAuth.jsx';
 import { PageClients, PageFicheClient } from './pages/Clients.jsx';
 import { PageArchives } from './pages/Archives.jsx';
+import { PageFicheCommande } from './pages/FicheCommande.jsx';
 import { PageFicheFournisseur } from './pages/FicheFournisseur.jsx';
 import { PageCorbeille } from './pages/Corbeille.jsx';
 import { PageArrivees, PageCourriel } from './pages/Courriel.jsx';
@@ -140,6 +141,11 @@ const routeur = createBrowserRouter([
                 // La fiche d'un fournisseur : réservée, comme ses prix, aux achats et à la direction.
                 element: <Exige action="lire" sujet="Fournisseur" />,
                 children: [{ path: '/achats/fournisseurs/:id', element: <PageFicheFournisseur /> }],
+              },
+              {
+                // La fiche d'une commande : ses prix restent aux achats et à la direction.
+                element: <Exige action="lire" sujet="PrixAchat" />,
+                children: [{ path: '/achats/commandes/:id', element: <PageFicheCommande /> }],
               },
               {
                 element: <Exige action="creer" sujet="Marche" />,
