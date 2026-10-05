@@ -11,7 +11,8 @@
     "./marches": "./src/marches.js",
     "./circuit": "./src/circuit.js",
     "./achats": "./src/achats.js",
-    "./activites": "./src/activites.js"
+    "./activites": "./src/activites.js",
+    "./modeles": "./src/modeles.js"
   },
   "scripts": {
     "test": "vitest run"

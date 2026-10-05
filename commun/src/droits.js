@@ -116,6 +116,8 @@ export function droitsPour(utilisateur) {
     // direction, comme le désarchiver.
     can('archiver', 'Marche');
     can('gerer', 'Activite');
+    // Les modèles de mails de toute l'équipe.
+    can('gerer', 'ModeleMail');
     can('gerer', ['AVerifier', 'Client']);
     can('lire', 'Journal');
     // Il suit les achats et leurs prix, sans les saisir.

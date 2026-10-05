@@ -779,3 +779,19 @@ model Notification {
   @@index([utilisateurId, lueLe])
   @@map("notifications")
 }
+
+/// Un modèle de mail, comme ceux d'Odoo : un objet et un message dont les
+/// blancs ({client}, {marche}, {fournisseur}…) se remplissent au moment
+/// d'écrire.
+model ModeleMail {
+  id        Int      @id @default(autoincrement())
+  nom       String   @unique @db.VarChar(120)
+  /// client | fournisseur | tous : où le modèle est proposé.
+  usage     String   @default("tous") @db.VarChar(20)
+  objet     String   @db.VarChar(255)
+  corps     String   @db.Text
+  creeLe    DateTime @default(now()) @map("cree_le")
+  modifieLe DateTime @updatedAt @map("modifie_le")
+
+  @@map("modeles_mails")
+}

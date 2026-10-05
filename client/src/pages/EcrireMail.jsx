@@ -18,6 +18,7 @@ import { Champ, Selection } from '../ui/Champ.jsx';
 import { Alerte, Badge } from '../ui/Elements.jsx';
 import { Modale } from '../ui/Modale.jsx';
 import { cx } from '../ui/cx.js';
+import { ChoixModele } from './ModelesMails.jsx';
 import { useToasts } from '../ui/Toasts.jsx';
 
 /** Retire les préfixes de réponse déjà là : « RE: RE: » n'aide personne. */
@@ -157,6 +158,20 @@ export function EcrireMail({ ouverte, surFermer, repondA = null, clientInitial =
               </p>
             )}
           </div>
+
+          {/* Comme dans Odoo : un modèle remplit l'objet et le message, blancs remplis. */}
+          <ChoixModele
+            usage="client"
+            valeurs={(() => {
+              const c = (clients.data ?? []).find((x) => String(x.id) === String(clientId));
+              const m = (marches.data ?? []).find((x) => String(x.id) === String(marcheId));
+              return { client: c?.nom ?? m?.client?.nom, marche: m?.reference, objet_marche: m?.objet };
+            })()}
+            surChoix={(o, t) => {
+              setObjet(o);
+              setTexte(t);
+            }}
+          />
 
           <Champ libelle="Objet" value={objet} onChange={(e) => setObjet(e.target.value)} erreur={erreurs.objet} required />
 

@@ -27,6 +27,7 @@ import { cx } from '../ui/cx.js';
 import { useToasts } from '../ui/Toasts.jsx';
 import { ModaleCommande } from './Achats.jsx';
 import { allerAuFil, BoutonRaccourci, FilActivite } from './FilActivite.jsx';
+import { ChoixModele } from './ModelesMails.jsx';
 
 const aujourdhui = () => new Date().toISOString().slice(0, 10);
 
@@ -107,6 +108,21 @@ function ModaleEnvoi({ ouverte, surChangement, c, emetteurId }) {
       }
     >
       <div className="grid gap-4">
+        <ChoixModele
+          usage="fournisseur"
+          valeurs={{
+            fournisseur: c.fournisseur.nom,
+            contact: c.fournisseur.contact,
+            marche: c.marche?.reference,
+            objet_marche: c.marche?.objet,
+            numero_commande: c.numero,
+            montant: c.totaux?.ttc ? montant(c.totaux.ttc) : null,
+          }}
+          surChoix={(o, t) => {
+            setObjet(o);
+            setTexte(t);
+          }}
+        />
         <Champ libelle="À" type="email" value={a} onChange={(e) => setA(e.target.value)} aide={c.fournisseur.email ? undefined : 'Aucune adresse sur la fiche du fournisseur : saisissez-la, et pensez à compléter sa fiche.'} />
         <Champ libelle="Objet" value={objet} onChange={(e) => setObjet(e.target.value)} />
         <ZoneTexte libelle="Message" lignes={7} value={texte} onChange={(e) => setTexte(e.target.value)} />

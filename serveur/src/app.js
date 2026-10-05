@@ -27,6 +27,7 @@ import routesCourriel from './routes/courriel.js';
 import routesDocuments from './routes/documents.js';
 import routesFil from './routes/fil.js';
 import routesMarches from './routes/marches.js';
+import routesModeles from './routes/modeles.js';
 import routesNotifications from './routes/notifications.js';
 import routesProfil from './routes/profil.js';
 import routesRecherche from './routes/recherche.js';
@@ -106,6 +107,7 @@ export async function construireApp({ journal = !config.estTest } = {}) {
   await app.register(routesActivites);
   await app.register(routesCalendrier);
   await app.register(routesAnalyses);
+  await app.register(routesModeles);
 
   // ── Écrans React (une fois construits avec `npm run build`) ────
   // En développement, c'est Vite qui les sert sur le port 5173.

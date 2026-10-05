@@ -22,6 +22,7 @@ import { Modale } from '../ui/Modale.jsx';
 import { useToasts } from '../ui/Toasts.jsx';
 import { ParametresCourriel } from './ParametresCourriel.jsx';
 import { ParametresJournal } from './ParametresJournal.jsx';
+import { ParametresModeles } from './ModelesMails.jsx';
 import { ParametresOcr } from './ParametresOcr.jsx';
 import { ParametresReferentiels } from './ParametresReferentiels.jsx';
 import { ParametresSauvegardes } from './ParametresSauvegardes.jsx';
@@ -30,6 +31,7 @@ const ONGLETS = [
   { chemin: 'utilisateurs', libelle: 'Utilisateurs et rôles', phase: 1 },
   { chemin: 'referentiels', libelle: 'Référentiels', phase: 1 },
   { chemin: 'courriel', libelle: 'Comptes mail', phase: 1 },
+  { chemin: 'modeles', libelle: 'Modèles de mails', phase: 1 },
   { chemin: 'ocr', libelle: 'OCR', phase: 1 },
   { chemin: 'sauvegardes', libelle: 'Sauvegardes', phase: 1 },
   { chemin: 'journal', libelle: 'Journal d’audit', phase: 1 },
@@ -58,6 +60,7 @@ export function PageParametres() {
         <Route index element={<Navigate to="utilisateurs" replace />} />
         <Route path="utilisateurs" element={<Utilisateurs />} />
         <Route path="courriel" element={<ParametresCourriel />} />
+        <Route path="modeles" element={<ParametresModeles />} />
         <Route path="journal" element={<ParametresJournal />} />
         <Route path="ocr" element={<ParametresOcr />} />
         <Route path="referentiels" element={<ParametresReferentiels />} />
