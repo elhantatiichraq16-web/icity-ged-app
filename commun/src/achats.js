@@ -67,6 +67,36 @@ export const CODES_MODALITE = MODALITES_PAIEMENT.map((m) => m.code);
 export const modalitePaiement = (code) => MODALITES_PAIEMENT.find((m) => m.code === code) ?? MODALITES_PAIEMENT[0];
 
 /** Où en est le paiement d'une commande. */
+/**
+ * Les étapes d'une commande, pour son Kanban : de la préparation au paiement.
+ * Elles se déduisent des dates et des lignes (`etapeCommande`), jamais saisies.
+ */
+export const ETAPES_COMMANDE = [
+  { code: 'preparee', nom: 'Préparée', ton: 'neutre', description: 'Le bon de commande n’est pas encore parti' },
+  { code: 'commandee', nom: 'Commandée', ton: 'cyan', description: 'Le fournisseur a la commande' },
+  { code: 'livree', nom: 'Livrée', ton: 'attente', description: 'Tout le matériel est reçu' },
+  { code: 'facturee', nom: 'Facturée', ton: 'bordeaux', description: 'La facture est arrivée' },
+  { code: 'payee', nom: 'Payée', ton: 'ok', description: 'Le solde est réglé' },
+];
+
+/** Les statuts de ligne qui disent que la commande est partie chez le fournisseur. */
+const LIGNE_COMMANDEE = ['commande_envoyee', 'en_cours', 'disponible', 'livre'];
+
+/**
+ * L'étape d'une commande, la plus avancée qui s'applique : payée, facturée,
+ * livrée (toutes ses lignes reçues), commandée, ou encore préparée.
+ *
+ * @param {{ soldePayeLe?: string | null, dateFacture?: string | null, dateCommande?: string | null, lignes?: { statut: string }[] }} c
+ */
+export function etapeCommande(c) {
+  const lignes = c.lignes ?? [];
+  if (c.soldePayeLe) return 'payee';
+  if (c.dateFacture) return 'facturee';
+  if (lignes.length && lignes.every((l) => l.statut === 'livre')) return 'livree';
+  if (c.dateCommande || lignes.some((l) => LIGNE_COMMANDEE.includes(l.statut))) return 'commandee';
+  return 'preparee';
+}
+
 export const ETATS_PAIEMENT = {
   avance_a_payer: { nom: 'Avance à payer', ton: 'attente' },
   reste_a_payer: { nom: 'Reste à payer', ton: 'cyan' },

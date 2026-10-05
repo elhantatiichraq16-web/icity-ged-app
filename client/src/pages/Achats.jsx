@@ -11,8 +11,9 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, FileSpreadsheet, Merge, Pencil, Plus, Trash2 } from 'lucide-react';
+import { CalendarClock, Columns3, Download, FileSpreadsheet, LayoutList, Merge, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
+  ETAPES_COMMANDE,
   ETATS_PAIEMENT,
   MODALITES_PAIEMENT,
   STATUTS_ACHAT,
@@ -845,9 +846,98 @@ function FormulaireImport({ marcheIdParDefaut, fermer, surImporte }) {
 
 // ── Les commandes et leur paiement ──────────────────────────────
 
+const CLE_VUE_COMMANDES = 'icity.commandes.vue';
+
+/** Liste ou Kanban, retenu sur ce poste : un confort. */
+function vueCommandesRetenue() {
+  try {
+    return localStorage.getItem(CLE_VUE_COMMANDES) === 'kanban' ? 'kanban' : 'liste';
+  } catch {
+    return 'liste';
+  }
+}
+
+/** Le liseré d'une colonne, d'après le ton de son étape. */
+const LISERES_ETAPES = { neutre: 'border-t-trait-fort', cyan: 'border-t-cyan', attente: 'border-t-attente', bordeaux: 'border-t-bordeaux', ok: 'border-t-ok' };
+
+/**
+ * Les commandes en colonnes, de la préparation au paiement, comme les achats
+ * d'Odoo. L'étape se déduit des dates et des lignes : on ne fait pas glisser
+ * une carte, on ouvre la commande (ou on verse sa pièce) pour la faire avancer.
+ */
+function KanbanCommandes({ liste, gerer, surModifier }) {
+  return (
+    <div className="-mx-1 overflow-x-auto px-1 pb-2">
+      <div className="flex gap-3">
+        {ETAPES_COMMANDE.map((e) => {
+          const cartes = liste.filter((c) => c.etape === e.code);
+          const somme = cartes.reduce((t, c) => t + (c.montantTtc ?? 0), 0);
+          return (
+            <section key={e.code} aria-label={`${e.nom} : ${cartes.length}`} className={cx('flex w-64 shrink-0 flex-col rounded-[12px] border-t-[3px] bg-surface-2', LISERES_ETAPES[e.ton])}>
+              <header className="px-3 pt-2.5 pb-2" title={e.description}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <h3 className="font-sans text-[14px] font-semibold">{e.nom}</h3>
+                  <span className="chiffres text-[13px] text-encre-3">{cartes.length}</span>
+                </div>
+                {somme > 0 && <p className="chiffres text-[12.5px] text-encre-3">{dh(somme)}</p>}
+              </header>
+              <ul className="grid max-h-[calc(100vh-20rem)] content-start gap-2 overflow-y-auto px-2 pb-2">
+                {cartes.map((c) => {
+                  const contenu = (
+                    <>
+                      <p className="truncate font-semibold">{c.fournisseur?.nom ?? '—'}</p>
+                      <p className="chiffres truncate text-[13px] text-encre-2">{c.marche?.reference ?? '—'}</p>
+                      <p className="mt-1 text-[13px] text-encre-3">
+                        {c.lignes.length} ligne{c.lignes.length > 1 ? 's' : ''}
+                        {c.montantTtc ? <span className="chiffres float-right text-encre-2">{dh(c.montantTtc)}</span> : null}
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <Badge ton={ETATS_PAIEMENT[c.etat].ton}>{ETATS_PAIEMENT[c.etat].nom}</Badge>
+                        {/* Facturée ou payée avant d'être reçue : on attend encore le matériel. */}
+                        {['facturee', 'payee'].includes(c.etape) && c.lignes.some((l) => l.statut !== 'livre') && <Badge ton="alerte">À livrer</Badge>}
+                        {c.echeance && c.etat !== 'soldee' && (
+                          <span className={cx('inline-flex items-center gap-1 text-[12.5px]', c.echeance < aujourdhui() ? 'font-semibold text-alerte-texte' : 'text-encre-3')}>
+                            <CalendarClock className="size-3.5" aria-hidden /> {dateFr(c.echeance)}
+                          </span>
+                        )}
+                      </div>
+                    </>
+                  );
+                  return (
+                    <li key={c.id} className="rounded-[10px] border border-trait bg-surface shadow-[var(--ombre)]">
+                      {gerer ? (
+                        <button type="button" onClick={() => surModifier(c)} className="block w-full p-3 text-left hover:bg-surface-2">
+                          {contenu}
+                        </button>
+                      ) : (
+                        <div className="p-3">{contenu}</div>
+                      )}
+                    </li>
+                  );
+                })}
+                {cartes.length === 0 && <li className="px-1 py-3 text-center text-[13px] text-encre-3">Aucune</li>}
+              </ul>
+            </section>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[13px] text-encre-3">L’étape suit la commande : bon de commande daté, lignes livrées, facture reçue, solde payé.</p>
+    </div>
+  );
+}
+
 function OngletPaiements({ commandes, gerer, surNouvelle, surModifier }) {
   const invalider = useInvalider();
   const { notifier } = useToasts();
+  const [vue, setVueEtat] = useState(vueCommandesRetenue);
+  function setVue(v) {
+    setVueEtat(v);
+    try {
+      localStorage.setItem(CLE_VUE_COMMANDES, v);
+    } catch {
+      // Navigation privée : la vue sera oubliée, rien de plus.
+    }
+  }
   if (commandes.isPending) {
     return (
       <Carte className="p-6">
@@ -878,14 +968,36 @@ function OngletPaiements({ commandes, gerer, surNouvelle, surModifier }) {
         <Tuile titre="Restes à payer" valeur={court(restes)} note="Toutes les commandes non soldées" />
         <Tuile titre="Échéances dépassées" valeur={depassees} ton={depassees ? 'alerte' : undefined} />
       </div>
-      {gerer && (
-        <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {/* Liste ou Kanban, comme les vues d'Odoo. */}
+        <div role="group" aria-label="Affichage" className="mr-auto inline-flex rounded-[10px] border border-trait bg-surface p-0.5">
+          {[
+            ['liste', 'Liste', LayoutList],
+            ['kanban', 'Kanban', Columns3],
+          ].map(([code, libelle, Icone]) => (
+            <button
+              key={code}
+              type="button"
+              aria-pressed={vue === code}
+              onClick={() => setVue(code)}
+              className={cx(
+                'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[13px] font-medium transition-colors',
+                vue === code ? 'bg-cyan-voile text-cyan-texte' : 'text-encre-2 hover:bg-surface-2 hover:text-encre',
+              )}
+            >
+              <Icone className="size-4" aria-hidden /> {libelle}
+            </button>
+          ))}
+        </div>
+        {gerer && (
           <Bouton taille="petit" icone={Plus} onClick={surNouvelle}>
             Nouvelle commande
           </Bouton>
-        </div>
-      )}
-      {!liste.length ? (
+        )}
+      </div>
+      {liste.length > 0 && vue === 'kanban' ? (
+        <KanbanCommandes liste={liste} gerer={gerer} surModifier={surModifier} />
+      ) : !liste.length ? (
         <Carte>
           <EtatVide titre="Aucune commande">Une commande réunit les lignes payées ensemble à un fournisseur : son montant, son avance, sa modalité et son échéance.</EtatVide>
         </Carte>

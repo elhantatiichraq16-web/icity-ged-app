@@ -293,3 +293,20 @@ describe('qui voit quoi', () => {
     }
   });
 });
+
+describe('étape d’une commande (Kanban)', () => {
+  it('va de « préparée » à « payée » d’après les dates et les lignes', async () => {
+    const { etapeCommande } = await import('../src/achats.js');
+    expect(etapeCommande({ lignes: [{ statut: 'en_attente' }] })).toBe('preparee');
+    expect(etapeCommande({ lignes: [{ statut: 'commande_envoyee' }, { statut: 'en_attente' }] })).toBe('commandee');
+    expect(etapeCommande({ dateCommande: '2026-09-01', lignes: [] })).toBe('commandee');
+    expect(etapeCommande({ lignes: [{ statut: 'livre' }, { statut: 'livre' }] })).toBe('livree');
+    expect(etapeCommande({ dateFacture: '2026-09-20', lignes: [{ statut: 'en_cours' }] })).toBe('facturee');
+    expect(etapeCommande({ soldePayeLe: '2026-10-01', dateFacture: '2026-09-20' })).toBe('payee');
+  });
+
+  it('une commande sans ligne n’est pas « livrée »', async () => {
+    const { etapeCommande } = await import('../src/achats.js');
+    expect(etapeCommande({ lignes: [] })).toBe('preparee');
+  });
+});
