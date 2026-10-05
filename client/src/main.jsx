@@ -10,6 +10,7 @@ import { Coquille } from './coquille/Coquille.jsx';
 import { PageChoisirMotDePasse, PageConnexion, PageDeuxFacteurs, PageMotDePasseOublie } from './pages/auth/PagesAuth.jsx';
 import { PageClients, PageFicheClient } from './pages/Clients.jsx';
 import { PageArchives } from './pages/Archives.jsx';
+import { PageAnalyses } from './pages/Analyses.jsx';
 import { PageCalendrier } from './pages/Calendrier.jsx';
 import { PageFicheCommande } from './pages/FicheCommande.jsx';
 import { PageFicheFournisseur } from './pages/FicheFournisseur.jsx';
@@ -130,6 +131,7 @@ const routeur = createBrowserRouter([
               { path: '/corbeille', element: <PageCorbeille /> },
               { path: '/archives', element: <PageArchives /> },
               { path: '/calendrier', element: <PageCalendrier /> },
+              { path: '/analyses', element: <PageAnalyses /> },
               { path: '/courriel', element: <PageCourriel /> },
               { path: '/arrivees', element: <PageArrivees /> },
               { path: '/documents/:id', element: <PageFicheDocument /> },

@@ -6,12 +6,14 @@
  * `phase` : la phase de livraison où l'écran sera construit.
  * `droit` : l'entrée n'apparaît que si l'utilisateur a ce droit.
  */
-import { Archive, Briefcase, Building2, CalendarDays, ClipboardCheck, FileText, Files, FolderInput, FolderKanban, Inbox, LayoutDashboard, ListChecks, Mail, Package, Settings, ShoppingCart, Trash2, Upload } from 'lucide-react';
+import { Archive, Briefcase, Building2, CalendarDays, ChartColumn, ClipboardCheck, FileText, Files, FolderInput, FolderKanban, Inbox, LayoutDashboard, ListChecks, Mail, Package, Settings, ShoppingCart, Trash2, Upload } from 'lucide-react';
 
 export const NAVIGATION = [
   { chemin: '/', libelle: 'Tableau de bord', icone: LayoutDashboard, phase: 6, groupe: 'Pilotage' },
   // Échéances, activités, livraisons et paiements sur un mois, comme Odoo.
   { chemin: '/calendrier', libelle: 'Calendrier', icone: CalendarDays, phase: 6, groupe: 'Pilotage' },
+  // Les vues Graphique et Tableau croisé d'Odoo.
+  { chemin: '/analyses', libelle: 'Analyses', icone: ChartColumn, phase: 6, groupe: 'Pilotage' },
   { chemin: '/marches', libelle: 'Marchés', icone: FolderKanban, phase: 2, groupe: 'Affaires' },
   // Le matériel de chaque marché : sa commande, sa livraison, son paiement.
   { chemin: '/achats', libelle: 'Achats', icone: ShoppingCart, phase: 10, droit: ['lire', 'Achat'], groupe: 'Affaires' },
