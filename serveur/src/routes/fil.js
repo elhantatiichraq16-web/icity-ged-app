@@ -77,6 +77,9 @@ const PHRASES = {
   'marche.desarchive': 'a désarchivé le marché',
   'marche.declare_par_attestation': 'a déclaré l’affaire d’après une attestation',
   'achats.import': 'a importé le classeur des achats',
+  'activite.planifiee': 'a planifié une activité',
+  'activite.faite': 'a fait une activité',
+  'activite.annulee': 'a annulé une activité',
   'client.cree': 'a créé le client',
   'client.modifie': 'a modifié la fiche',
   'client.contact_ajoute': 'a ajouté un contact',
@@ -171,7 +174,7 @@ function elementJournal(l, noms, pieces) {
     texte: (phrase ?? l.action).replace('{piece}', nomPiece),
     pieceId: piece?.id ?? null,
     changements,
-    commentaire: l.action.startsWith('circuit.') || l.action === 'achats.import' ? l.commentaire : null,
+    commentaire: l.action.startsWith('circuit.') || l.action.startsWith('activite.') || l.action === 'achats.import' ? l.commentaire : null,
   };
 }
 

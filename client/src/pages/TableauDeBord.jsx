@@ -14,6 +14,7 @@ import { api } from '../api.js';
 import { useSession } from '../auth/session.jsx';
 import { depuis } from '../format.js';
 import { Alerte, Carte, EnTetePage, EtatVide, SqueletteLignes } from '../ui/Elements.jsx';
+import { MesActivites } from './Activites.jsx';
 import { RappelArchives } from './Archives.jsx';
 import { cx } from '../ui/cx.js';
 
@@ -105,6 +106,9 @@ export function PageTableauDeBord() {
         />
         <Tuile icone={FileText} titre="Documents" chiffre={tuiles.documents} note={`${tuiles.pages} pages lues`} vers="/documents" />
       </div>
+
+      {/* ── Mes activités : ce que j'ai à faire, comme dans Odoo ── */}
+      <MesActivites className="mb-5" />
 
       {/* ── Jauge de rattachement ── */}
       <Carte className="mb-5 p-5">
@@ -339,6 +343,8 @@ function NouveauDepart({ prenom }) {
           ))}
         </div>
       )}
+
+      <MesActivites className="mb-5" />
 
       <RappelArchives />
     </div>

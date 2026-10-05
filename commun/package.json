@@ -10,7 +10,8 @@
     "./schemas": "./src/schemas.js",
     "./marches": "./src/marches.js",
     "./circuit": "./src/circuit.js",
-    "./achats": "./src/achats.js"
+    "./achats": "./src/achats.js",
+    "./activites": "./src/activites.js"
   },
   "scripts": {
     "test": "vitest run"

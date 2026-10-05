@@ -63,6 +63,8 @@ model Utilisateur {
   marchesSuivis   Marche[]          @relation("MarchesSuivis")
   marchesArchives Marche[]          @relation("MarchesArchives")
   documentsArchives Document[]      @relation("DocumentsArchives")
+  activitesAssignees Activite[]     @relation("ActivitesAssignees")
+  activitesCreees   Activite[]      @relation("ActivitesCreees")
   documentsVerses Document[]        @relation("DocumentsVerses")
   versionsDeposees DocumentVersion[] @relation("VersionsDeposees")
   achatsSuivis    LigneAchat[]      @relation("SuiviAchat")
@@ -169,6 +171,7 @@ model Client {
   documents Document[]
   mails     Mail[]
   contacts  ContactClient[]
+  activites Activite[]
 
   @@map("clients")
 }
@@ -269,6 +272,7 @@ model Marche {
   mails     Mail[]
   lignesAchat          LigneAchat[]
   commandesFournisseur CommandeFournisseur[]
+  activites            Activite[]
 
   @@index([clientId])
   @@index([phase])
@@ -657,4 +661,36 @@ model DocumentVersion {
 
   @@unique([documentId, numero])
   @@map("document_versions")
+}
+
+// ── Les activités (le modèle d'Odoo) ───────────────────────────
+
+/// Un rappel posé sur une fiche : « Appeler l'ordonnateur pour le PV », pour
+/// telle personne, à telle date. Une fois faite, l'activité garde son compte
+/// rendu, et son passage s'inscrit dans le fil de la fiche.
+model Activite {
+  id           Int          @id @default(autoincrement())
+  /// a_faire | appel | mail | reunion | piece
+  type         String       @default("a_faire") @db.VarChar(20)
+  resume       String       @db.VarChar(160)
+  note         String?      @db.Text
+  echeance     DateTime     @db.Date
+  assigneId    Int          @map("assigne_id")
+  assigne      Utilisateur  @relation("ActivitesAssignees", fields: [assigneId], references: [id], onDelete: Cascade)
+  creeParId    Int?         @map("cree_par")
+  creePar      Utilisateur? @relation("ActivitesCreees", fields: [creeParId], references: [id], onDelete: SetNull)
+  /// La fiche qui porte l'activité : un marché, ou un client.
+  marcheId     Int?         @map("marche_id")
+  marche       Marche?      @relation(fields: [marcheId], references: [id], onDelete: Cascade)
+  clientId     Int?         @map("client_id")
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  faiteLe      DateTime?    @map("faite_le")
+  compteRendu  String?      @map("compte_rendu") @db.Text
+  creeLe       DateTime     @default(now()) @map("cree_le")
+  modifieLe    DateTime     @updatedAt @map("modifie_le")
+
+  @@index([assigneId, faiteLe])
+  @@index([marcheId])
+  @@index([clientId])
+  @@map("activites")
 }

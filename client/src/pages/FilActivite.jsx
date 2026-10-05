@@ -15,6 +15,7 @@ import { Bouton } from '../ui/Bouton.jsx';
 import { Alerte, Carte, SqueletteLignes } from '../ui/Elements.jsx';
 import { cx } from '../ui/cx.js';
 import { useToasts } from '../ui/Toasts.jsx';
+import { ActivitesFiche } from './Activites.jsx';
 
 /** « Aujourd'hui », « Hier », ou la date : les séparateurs du fil. */
 function jourDe(date) {
@@ -158,6 +159,9 @@ export function FilActivite({ type, id, className }) {
           </div>
         </form>
       </div>
+
+      {/* Les activités prévues, avant l'historique : ce qui reste à faire d'abord. */}
+      <ActivitesFiche type={type} id={id} />
 
       {fil.isPending ? (
         <div className="p-5">

@@ -67,6 +67,11 @@ export function droitsPour(utilisateur) {
 
   if (role === 'lecteur') return build();
 
+  // Les activités (rappels) : chacun en planifie, pour lui ou pour un
+  // collègue. On modifie celles qu'on a créées ou qu'on doit faire ; la
+  // direction, toutes.
+  can('planifier', 'Activite');
+
   // ── Déposants ──
   if (DEPOSANTS.includes(role)) {
     can('verser', 'Document');
@@ -110,6 +115,7 @@ export function droitsPour(utilisateur) {
     // Archiver un marché le sort de la vue de tous : c'est une décision de
     // direction, comme le désarchiver.
     can('archiver', 'Marche');
+    can('gerer', 'Activite');
     can('gerer', ['AVerifier', 'Client']);
     can('lire', 'Journal');
     // Il suit les achats et leurs prix, sans les saisir.
