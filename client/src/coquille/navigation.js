@@ -6,10 +6,12 @@
  * `phase` : la phase de livraison où l'écran sera construit.
  * `droit` : l'entrée n'apparaît que si l'utilisateur a ce droit.
  */
-import { Archive, Briefcase, Building2, ClipboardCheck, FileText, Files, FolderInput, FolderKanban, Inbox, LayoutDashboard, ListChecks, Mail, Package, Settings, ShoppingCart, Trash2, Upload } from 'lucide-react';
+import { Archive, Briefcase, Building2, CalendarDays, ClipboardCheck, FileText, Files, FolderInput, FolderKanban, Inbox, LayoutDashboard, ListChecks, Mail, Package, Settings, ShoppingCart, Trash2, Upload } from 'lucide-react';
 
 export const NAVIGATION = [
   { chemin: '/', libelle: 'Tableau de bord', icone: LayoutDashboard, phase: 6, groupe: 'Pilotage' },
+  // Échéances, activités, livraisons et paiements sur un mois, comme Odoo.
+  { chemin: '/calendrier', libelle: 'Calendrier', icone: CalendarDays, phase: 6, groupe: 'Pilotage' },
   { chemin: '/marches', libelle: 'Marchés', icone: FolderKanban, phase: 2, groupe: 'Affaires' },
   // Le matériel de chaque marché : sa commande, sa livraison, son paiement.
   { chemin: '/achats', libelle: 'Achats', icone: ShoppingCart, phase: 10, droit: ['lire', 'Achat'], groupe: 'Affaires' },
@@ -30,7 +32,7 @@ export const NAVIGATION = [
 export const ARRIVEES = { chemin: '/arrivees', libelle: 'Arrivées', icone: Inbox, phase: 8 };
 
 /** L'icône d'un groupe : sur son titre, qu'on clique pour l'ouvrir. */
-export const ICONES_GROUPES = { Affaires: Briefcase, Documents: Files, Tri: ListChecks, Rangement: Package };
+export const ICONES_GROUPES = { Pilotage: LayoutDashboard, Affaires: Briefcase, Documents: Files, Tri: ListChecks, Rangement: Package };
 
 /** Les entrées visibles pour ces droits. */
 export function entreesVisibles(droits) {
