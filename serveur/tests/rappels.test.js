@@ -21,7 +21,7 @@ vi.mock('nodemailer', () => ({
 
 const { db } = await import('../src/db.js');
 const { chiffrer } = await import('../src/securite/crypto.js');
-const { envoyerRappelsDuJour, notifierRappels } = await import('../src/services/rappels.js');
+const { alerterAvantHeure, envoyerRappelsDuJour, notifierRappels } = await import('../src/services/rappels.js');
 const { connecter, creerUtilisateur, en, nouvelleApp, viderBase } = await import('./outils.js');
 
 let app;
@@ -128,5 +128,21 @@ describe('rappel du matin', () => {
     await requete('PATCH', `/api/activites/${a.id}`, { type: 'reunion', resume: 'Réunion de chantier', echeance: '2026-11-12', heure: '09:30', rappelJours: 1, assigneId: moi.id, participantIds: [invite.id] });
     expect(await notifierRappels({ maintenant: MAINTENANT })).toEqual({ notifies: 0 });
     expect(await notifierRappels({ maintenant: new Date('2026-11-11T08:00:00Z') })).toEqual({ notifies: 2 });
+  });
+
+  it('une réunion à 10:00 : l’alerte part à 9:50, une seule fois, dans la cloche et par mail', async () => {
+    const moi = await creerUtilisateur('chef_projet', { nom: 'Karim Alami' });
+    const invite = await creerUtilisateur('chef_projet', { rappelQuotidien: false });
+    await db.activite.create({
+      data: { type: 'reunion', resume: 'Réunion de chantier', echeance: le('2026-11-09'), heure: '10:00', assigneId: moi.id, participants: { create: [{ utilisateurId: invite.id }] } },
+    });
+    // Casablanca = UTC+1 : 9:45 est trop tôt, 9:50 déclenche.
+    expect(await alerterAvantHeure({ maintenant: new Date('2026-11-09T08:45:00Z') })).toEqual({ alertes: 0, mails: 0 });
+    expect(await alerterAvantHeure({ maintenant: new Date('2026-11-09T08:50:00Z') })).toEqual({ alertes: 2, mails: 1 });
+    expect(envois).toHaveLength(1);
+    expect(envois[0]).toMatchObject({ to: moi.email, subject: 'Rappel : Réunion de chantier à 10:00' });
+    expect(envois[0].text).toContain('Réunion dans 10 min, à 10:00 : Réunion de chantier');
+    expect(await db.notification.count({ where: { genre: 'rappel', utilisateurId: invite.id } })).toBe(1);
+    expect(await alerterAvantHeure({ maintenant: new Date('2026-11-09T08:55:00Z') })).toEqual({ alertes: 0, mails: 0 });
   });
 });

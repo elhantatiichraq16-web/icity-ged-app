@@ -6,7 +6,8 @@
  *    arrive, et le document apparaît dans les secondes qui suivent (§10 bis) ;
  *  - vidage de la corbeille au-delà de 30 jours (§9), chaque nuit ;
  *  - le rappel du matin : les activités de chacun, par mail, à 8 h ;
- *  - les rappels « N jours avant », dans la cloche, chaque heure.
+ *  - les rappels « N jours avant », dans la cloche, chaque heure ;
+ *  - l'alerte « dans 10 minutes » d'une réunion à heure fixe, chaque minute.
  *
  * Un seul processus, une tâche à la fois : ce PC a 3,7 Go de mémoire (§2).
  */
@@ -20,7 +21,7 @@ import { detecterDoublons } from './services/arbitrage-doublons.js';
 import { classerLeFonds } from './services/classement-auto.js';
 import { purgerJournal, viderCorbeille } from './services/entretien.js';
 import { resteALire, tesseractDisponible, traiterFile } from './services/ocr.js';
-import { envoyerRappelsDuJour, notifierRappels } from './services/rappels.js';
+import { alerterAvantHeure, envoyerRappelsDuJour, notifierRappels } from './services/rappels.js';
 import { lireFacturesApresOcr } from './services/suivi-achats.js';
 
 const journal = console;
@@ -160,6 +161,17 @@ async function rappelsDansLaCloche() {
 }
 cron.schedule('5 * * * *', rappelsDansLaCloche, { timezone: 'Africa/Casablanca' });
 await rappelsDansLaCloche();
+
+/** L'alerte 10 minutes avant une activité à heure fixe : chaque minute. */
+async function alertesAvantHeure() {
+  try {
+    const { alertes, mails } = await alerterAvantHeure({ log: journal });
+    if (alertes) journal.log(`Alertes : ${alertes} dans la cloche, ${mails} mail(s).`);
+  } catch (erreur) {
+    journal.error('Alertes en échec :', erreur.message);
+  }
+}
+cron.schedule('* * * * *', alertesAvantHeure, { timezone: 'Africa/Casablanca' });
 
 await ecouterLesComptes();
 

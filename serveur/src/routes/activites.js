@@ -221,6 +221,7 @@ export default async function routesActivites(app) {
         ...champs,
         echeance: date(donnees.echeance),
         ...(rappelChange ? { rappelNotifieLe: null } : {}),
+        ...(rappelChange || (avant.heure ?? null) !== (donnees.heure ?? null) ? { alerteEnvoyeeLe: null } : {}),
         participants: { deleteMany: {}, create: participants.map((utilisateurId) => ({ utilisateurId })) },
       },
       include: AVEC,

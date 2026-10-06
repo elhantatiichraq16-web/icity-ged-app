@@ -727,6 +727,8 @@ model Activite {
   /// Prévenir N jours avant (1 = la veille) ; vide : seulement le jour même.
   rappelJours  Int?         @map("rappel_jours")
   rappelNotifieLe DateTime? @map("rappel_notifie_le")
+  /// L'alerte « dans 10 minutes » d'une activité à heure fixe : envoyée une fois.
+  alerteEnvoyeeLe DateTime? @map("alerte_envoyee_le")
   participants ParticipantActivite[]
   assigneId    Int          @map("assigne_id")
   assigne      Utilisateur  @relation("ActivitesAssignees", fields: [assigneId], references: [id], onDelete: Cascade)

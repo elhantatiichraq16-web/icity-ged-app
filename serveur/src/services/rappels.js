@@ -10,6 +10,9 @@
  * dans la partie « Bientôt » du mail, et une seule fois dans la cloche
  * (`notifierRappels`). Les participants d'une réunion sont prévenus comme la
  * personne chargée.
+ *
+ * Une activité à heure fixe donne aussi une alerte, comme celles d'Odoo :
+ * 10 minutes avant, dans la cloche et par mail (`alerterAvantHeure`).
  */
 import { debutRappel, jourCasablanca, nomTypeActivite } from '@icity/commun/activites';
 import { config } from '../config.js';
@@ -153,4 +156,78 @@ export async function notifierRappels({ maintenant = new Date() } = {}) {
     notifies += actifs.length;
   }
   return { notifies };
+}
+
+/** Combien de minutes avant l'heure part l'alerte. */
+export const ALERTE_MINUTES = 10;
+
+/** L'heure de Casablanca en minutes depuis minuit, et le jour. */
+function horloge(maintenant) {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Casablanca', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(maintenant);
+  const valeur = (type) => Number(parts.find((p) => p.type === type).value);
+  return { jour: jourCasablanca(maintenant), minutes: valeur('hour') * 60 + valeur('minute') };
+}
+const enMinutes = (heure) => Number(heure.slice(0, 2)) * 60 + Number(heure.slice(3, 5));
+
+/**
+ * L'alerte d'une activité à heure fixe : 10 minutes avant, une seule fois
+ * (`alerteEnvoyeeLe`), dans la cloche et par mail, à la personne chargée et
+ * aux participants. Une heure déjà passée de plus de 30 minutes (PC éteint)
+ * ne déclenche plus rien. Le worker l'appelle chaque minute.
+ *
+ * @param {{ maintenant?: Date, log?: object }} options
+ * @returns {Promise<{ alertes: number, mails: number }>}
+ */
+export async function alerterAvantHeure({ maintenant = new Date(), log = console } = {}) {
+  const { jour, minutes } = horloge(maintenant);
+  const candidates = await db.activite.findMany({
+    where: { faiteLe: null, alerteEnvoyeeLe: null, heure: { not: null }, echeance: new Date(`${jour}T00:00:00Z`) },
+    include: {
+      participants: { select: { utilisateurId: true } },
+      marche: { select: { reference: true } },
+      client: { select: { nom: true } },
+      fournisseur: { select: { nom: true } },
+    },
+  });
+  const dues = candidates.filter((a) => {
+    const h = enMinutes(a.heure);
+    return minutes >= h - ALERTE_MINUTES && minutes <= h + 30;
+  });
+  if (!dues.length) return { alertes: 0, mails: 0 };
+
+  const compte = await db.compteMail.findFirst({ where: { actif: true }, orderBy: { id: 'asc' } });
+  let alertes = 0;
+  let mails = 0;
+  for (const a of dues) {
+    // Noté d'abord : un mail en échec ne doit pas faire sonner l'alerte chaque minute.
+    await db.activite.update({ where: { id: a.id }, data: { alerteEnvoyeeLe: maintenant } });
+    const reste = enMinutes(a.heure) - minutes;
+    const quand = reste > 0 ? `dans ${reste} min, à ${a.heure}` : reste === 0 ? `maintenant, à ${a.heure}` : `commencé à ${a.heure}`;
+    const fiche = a.marche?.reference ?? a.client?.nom ?? a.fournisseur?.nom ?? null;
+    const texte = `${nomTypeActivite(a.type)} ${quand} : ${a.resume}${fiche ? ` — ${fiche}` : ''}`.slice(0, 255);
+    const personnes = await db.utilisateur.findMany({
+      where: { id: { in: [a.assigneId, ...a.participants.map((p) => p.utilisateurId)] }, actif: true },
+      select: { id: true, nom: true, email: true, rappelQuotidien: true },
+    });
+    await db.notification.createMany({ data: personnes.map((u) => ({ utilisateurId: u.id, genre: 'rappel', texte, lien: lienActivite(a) })) });
+    alertes += personnes.length;
+    if (!compte) continue;
+    // Le mail suit le choix du profil (« Rappel du matin ») : qui l'a coupé ne reçoit que la cloche.
+    for (const u of personnes.filter((x) => x.rappelQuotidien)) {
+      try {
+        await envoyerSansArchiver({
+          compteId: compte.id,
+          a: u.email,
+          objet: `Rappel : ${a.resume} à ${a.heure}`,
+          texte: [`Bonjour ${u.nom.split(' ')[0]},`, '', `${texte}.`, a.note ? `\n${a.note}` : null, '', `Ouvrir : ${config.APP_URL}${lienActivite(a)}`, '', 'Ce rappel se désactive dans votre profil.']
+            .filter((l) => l !== null)
+            .join('\n'),
+        });
+        mails += 1;
+      } catch (erreur) {
+        log.error?.(`Alerte pour ${u.email} en échec : ${erreur.message}`);
+      }
+    }
+  }
+  return { alertes, mails };
 }
