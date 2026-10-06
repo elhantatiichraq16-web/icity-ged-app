@@ -4,9 +4,7 @@
  */
 
 /** Les activités qui me concernent : confiées à moi, ou auxquelles je participe. */
-export const QUI_ME_CONCERNENT = (moi) => ({
-  OR: [{ assigneId: moi }, { participants: { some: { utilisateurId: moi } } }],
-});
+export const QUI_ME_CONCERNENT = (moi) => ({ OR: [{ assigneId: moi }, { participants: { some: { utilisateurId: moi } } }] });
 
 /** Où mène une activité : sa fiche, ou le calendrier à sa date pour un événement libre. */
 export function lienActivite(a) {
@@ -17,14 +15,7 @@ export function lienActivite(a) {
   return `/calendrier?date=${a.echeance.toISOString().slice(0, 10)}`;
 }
 
-const jourFr = (iso) =>
-  new Intl.DateTimeFormat("fr-FR", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    timeZone: "UTC",
-  }).format(new Date(`${iso}T00:00:00Z`));
+const jourFr = (iso) => new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
 
 /** « le jeudi 9 octobre à 10:00 » */
-export const quandFr = (a) =>
-  `le ${jourFr(a.echeance.toISOString().slice(0, 10))}${a.heure ? ` à ${a.heure}` : ""}`;
+export const quandFr = (a) => `le ${jourFr(a.echeance.toISOString().slice(0, 10))}${a.heure ? ` à ${a.heure}` : ''}`;
