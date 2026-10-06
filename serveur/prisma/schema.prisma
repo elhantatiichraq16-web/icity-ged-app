@@ -70,6 +70,7 @@ model Utilisateur {
   documentsArchives Document[]      @relation("DocumentsArchives")
   activitesAssignees Activite[]     @relation("ActivitesAssignees")
   activitesCreees   Activite[]      @relation("ActivitesCreees")
+  participations    ParticipantActivite[]
   abonnements       Abonnement[]
   tachesMarches     TacheMarche[]   @relation("TachesMarches")
   notifications     Notification[]  @relation("NotificationsRecues")
@@ -720,11 +721,19 @@ model Activite {
   resume       String       @db.VarChar(160)
   note         String?      @db.Text
   echeance     DateTime     @db.Date
+  /// Facultatif : l'heure (« 10:00 ») et la durée, pour une réunion.
+  heure        String?      @db.VarChar(5)
+  dureeMinutes Int?         @map("duree_minutes")
+  /// Prévenir N jours avant (1 = la veille) ; vide : seulement le jour même.
+  rappelJours  Int?         @map("rappel_jours")
+  rappelNotifieLe DateTime? @map("rappel_notifie_le")
+  participants ParticipantActivite[]
   assigneId    Int          @map("assigne_id")
   assigne      Utilisateur  @relation("ActivitesAssignees", fields: [assigneId], references: [id], onDelete: Cascade)
   creeParId    Int?         @map("cree_par")
   creePar      Utilisateur? @relation("ActivitesCreees", fields: [creeParId], references: [id], onDelete: SetNull)
-  /// La fiche qui porte l'activité : un marché, un client, un fournisseur ou une commande.
+  /// La fiche qui porte l'activité : un marché, un client, un fournisseur ou une
+  /// commande — ou aucune, pour un événement libre (réunion d'équipe, formation).
   marcheId     Int?         @map("marche_id")
   marche       Marche?      @relation(fields: [marcheId], references: [id], onDelete: Cascade)
   clientId     Int?         @map("client_id")
@@ -744,6 +753,19 @@ model Activite {
   @@index([fournisseurId])
   @@index([commandeId])
   @@map("activites")
+}
+
+/// Les autres personnes conviées à une activité (une réunion) : chacune la voit
+/// dans ses activités, son calendrier et son rappel.
+model ParticipantActivite {
+  activiteId    Int         @map("activite_id")
+  activite      Activite    @relation(fields: [activiteId], references: [id], onDelete: Cascade)
+  utilisateurId Int         @map("utilisateur_id")
+  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+
+  @@id([activiteId, utilisateurId])
+  @@index([utilisateurId])
+  @@map("participants_activites")
 }
 
 // ── Abonnés et notifications (le modèle d'Odoo) ────────────────

@@ -5,38 +5,85 @@
  * Il part une seule fois par jour et par personne (`rappelEnvoyeLe`) : le
  * worker le tente à 8 h, et au démarrage si le PC était éteint à 8 h. Qui n'a
  * rien à faire ne reçoit rien ; qui l'a désactivé dans son profil non plus.
+ *
+ * Une activité avec un rappel (« 2 jours avant ») paraît aussi, dès ce jour-là,
+ * dans la partie « Bientôt » du mail, et une seule fois dans la cloche
+ * (`notifierRappels`). Les participants d'une réunion sont prévenus comme la
+ * personne chargée.
  */
-import { jourCasablanca, nomTypeActivite } from '@icity/commun/activites';
-import { config } from '../config.js';
-import { db } from '../db.js';
-import { envoyerSansArchiver } from './courriel-sortant.js';
+import {
+  debutRappel,
+  jourCasablanca,
+  nomTypeActivite,
+} from "@icity/commun/activites";
+import { config } from "../config.js";
+import { db } from "../db.js";
+import { lienActivite, QUI_ME_CONCERNENT, quandFr } from "./activites.js";
+import { envoyerSansArchiver } from "./courriel-sortant.js";
 
-const jourFr = (iso) => new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
+const iso = (d) => d.toISOString().slice(0, 10);
+const plusJours = (jour, n) =>
+  new Date(Date.parse(`${jour}T00:00:00Z`) + n * 86_400_000);
+
+/** « demain », « dans 2 jours » */
+const dansCombien = (echeance, aujourdhui) => {
+  const n = Math.round(
+    (Date.parse(`${echeance}T00:00:00Z`) -
+      Date.parse(`${aujourdhui}T00:00:00Z`)) /
+      86_400_000,
+  );
+  return n === 1 ? "demain" : `dans ${n} jours`;
+};
+
+const jourFr = (iso) =>
+  new Intl.DateTimeFormat("fr-FR", {
+    day: "numeric",
+    month: "long",
+    timeZone: "UTC",
+  }).format(new Date(`${iso}T00:00:00Z`));
 
 /** Le texte du rappel d'une personne. */
 export function texteRappel(nom, activites, aujourdhui, url = config.APP_URL) {
-  const iso = (d) => d.toISOString().slice(0, 10);
   const retard = activites.filter((a) => iso(a.echeance) < aujourdhui);
   const jour = activites.filter((a) => iso(a.echeance) === aujourdhui);
+  const bientot = activites.filter((a) => iso(a.echeance) > aujourdhui);
   const ligne = (a) => {
-    const fiche = a.marche?.reference ?? a.client?.nom ?? a.fournisseur?.nom ?? (a.commande ? `commande ${a.commande.fournisseur?.nom ?? ''}`.trim() : null);
-    return `  • ${nomTypeActivite(a.type)} : ${a.resume}${fiche ? ` (${fiche})` : ''}${iso(a.echeance) < aujourdhui ? ` — prévue le ${jourFr(iso(a.echeance))}` : ''}`;
+    const fiche =
+      a.marche?.reference ??
+      a.client?.nom ??
+      a.fournisseur?.nom ??
+      (a.commande
+        ? `commande ${a.commande.fournisseur?.nom ?? ""}`.trim()
+        : null);
+    const e = iso(a.echeance);
+    const quand =
+      e < aujourdhui
+        ? ` — prévue le ${jourFr(e)}`
+        : e > aujourdhui
+          ? ` — le ${jourFr(e)}${a.heure ? ` à ${a.heure}` : ""}`
+          : a.heure
+            ? ` — à ${a.heure}`
+            : "";
+    return `  • ${nomTypeActivite(a.type)} : ${a.resume}${fiche ? ` (${fiche})` : ""}${quand}`;
   };
   return [
-    `Bonjour ${nom.split(' ')[0]},`,
-    '',
+    `Bonjour ${nom.split(" ")[0]},`,
+    "",
     retard.length ? `En retard (${retard.length}) :` : null,
     ...retard.map(ligne),
-    retard.length ? '' : null,
+    retard.length ? "" : null,
     jour.length ? `Pour aujourd’hui (${jour.length}) :` : null,
     ...jour.map(ligne),
-    jour.length ? '' : null,
+    jour.length ? "" : null,
+    bientot.length ? `Bientôt (${bientot.length}) :` : null,
+    ...bientot.map(ligne),
+    bientot.length ? "" : null,
     `Vos activités : ${url}/`,
-    '',
-    'Ce rappel se désactive dans votre profil.',
+    "",
+    "Ce rappel se désactive dans votre profil.",
   ]
     .filter((l) => l !== null)
-    .join('\n');
+    .join("\n");
 }
 
 /**
@@ -45,9 +92,15 @@ export function texteRappel(nom, activites, aujourdhui, url = config.APP_URL) {
  * @param {{ maintenant?: Date, log?: object }} options
  * @returns {Promise<{ envoyes: number, sansCompte?: boolean }>}
  */
-export async function envoyerRappelsDuJour({ maintenant = new Date(), log = console } = {}) {
+export async function envoyerRappelsDuJour({
+  maintenant = new Date(),
+  log = console,
+} = {}) {
   const aujourdhui = jourCasablanca(maintenant);
-  const compte = await db.compteMail.findFirst({ where: { actif: true }, orderBy: { id: 'asc' } });
+  const compte = await db.compteMail.findFirst({
+    where: { actif: true },
+    orderBy: { id: "asc" },
+  });
   if (!compte) return { envoyes: 0, sansCompte: true };
 
   const personnes = await db.utilisateur.findMany({
@@ -55,38 +108,130 @@ export async function envoyerRappelsDuJour({ maintenant = new Date(), log = cons
       actif: true,
       rappelQuotidien: true,
       motDePasse: { not: null },
-      OR: [{ rappelEnvoyeLe: null }, { rappelEnvoyeLe: { lt: new Date(`${aujourdhui}T00:00:00Z`) } }],
+      OR: [
+        { rappelEnvoyeLe: null },
+        { rappelEnvoyeLe: { lt: new Date(`${aujourdhui}T00:00:00Z`) } },
+      ],
     },
     select: { id: true, nom: true, email: true },
   });
 
   let envoyes = 0;
   for (const p of personnes) {
-    const activites = await db.activite.findMany({
-      where: { assigneId: p.id, faiteLe: null, echeance: { lte: new Date(`${aujourdhui}T00:00:00Z`) } },
+    // Les activités échues, et celles à venir dont le rappel a commencé (30 jours au plus).
+    const candidates = await db.activite.findMany({
+      where: {
+        AND: [
+          QUI_ME_CONCERNENT(p.id),
+          {
+            faiteLe: null,
+            OR: [
+              { echeance: { lte: new Date(`${aujourdhui}T00:00:00Z`) } },
+              {
+                rappelJours: { not: null },
+                echeance: { lte: plusJours(aujourdhui, 30) },
+              },
+            ],
+          },
+        ],
+      },
       include: {
         marche: { select: { reference: true } },
         client: { select: { nom: true } },
         fournisseur: { select: { nom: true } },
         commande: { select: { fournisseur: { select: { nom: true } } } },
       },
-      orderBy: { echeance: 'asc' },
+      orderBy: [
+        { echeance: "asc" },
+        { heure: { sort: "asc", nulls: "first" } },
+      ],
     });
+    const activites = candidates.filter(
+      (a) =>
+        iso(a.echeance) <= aujourdhui ||
+        debutRappel(iso(a.echeance), a.rappelJours) <= aujourdhui,
+    );
     if (!activites.length) continue;
-    const enRetard = activites.filter((a) => a.echeance.toISOString().slice(0, 10) < aujourdhui).length;
+    const echues = activites.filter(
+      (a) => iso(a.echeance) <= aujourdhui,
+    ).length;
+    const enRetard = activites.filter(
+      (a) => iso(a.echeance) < aujourdhui,
+    ).length;
+    const aVenir = activites.length - echues;
+    const objet = echues
+      ? `Vos activités du jour : ${echues}${enRetard ? ` (dont ${enRetard} en retard)` : ""}${aVenir ? `, et ${aVenir} à venir` : ""}`
+      : `Rappel : ${aVenir} activité(s) à venir`;
     try {
       await envoyerSansArchiver({
         compteId: compte.id,
         a: p.email,
-        objet: `Vos activités du jour : ${activites.length}${enRetard ? ` (dont ${enRetard} en retard)` : ''}`,
+        objet,
         texte: texteRappel(p.nom, activites, aujourdhui),
       });
       // Noté seulement une fois parti : un échec sera retenté au prochain passage.
-      await db.utilisateur.update({ where: { id: p.id }, data: { rappelEnvoyeLe: new Date(`${aujourdhui}T00:00:00Z`) } });
+      await db.utilisateur.update({
+        where: { id: p.id },
+        data: { rappelEnvoyeLe: new Date(`${aujourdhui}T00:00:00Z`) },
+      });
       envoyes += 1;
     } catch (erreur) {
-      log.error?.(`Rappel du jour pour ${p.email} en échec : ${erreur.message}`);
+      log.error?.(
+        `Rappel du jour pour ${p.email} en échec : ${erreur.message}`,
+      );
     }
   }
   return { envoyes };
+}
+
+/**
+ * Le rappel dans la cloche, N jours avant : une seule fois par activité
+ * (`rappelNotifieLe`), pour la personne chargée et les participants. Sans
+ * effet quand rien n'est dû : le worker peut l'appeler toutes les heures.
+ *
+ * @param {{ maintenant?: Date }} options
+ * @returns {Promise<{ notifies: number }>}
+ */
+export async function notifierRappels({ maintenant = new Date() } = {}) {
+  const aujourdhui = jourCasablanca(maintenant);
+  const candidates = await db.activite.findMany({
+    where: {
+      faiteLe: null,
+      rappelNotifieLe: null,
+      rappelJours: { not: null },
+      echeance: {
+        gt: new Date(`${aujourdhui}T00:00:00Z`),
+        lte: plusJours(aujourdhui, 30),
+      },
+    },
+    include: { participants: { select: { utilisateurId: true } } },
+  });
+  let notifies = 0;
+  for (const a of candidates) {
+    if (debutRappel(iso(a.echeance), a.rappelJours) > aujourdhui) continue;
+    const ids = [a.assigneId, ...a.participants.map((p) => p.utilisateurId)];
+    const actifs = await db.utilisateur.findMany({
+      where: { id: { in: ids }, actif: true },
+      select: { id: true },
+    });
+    const texte =
+      `Rappel ${dansCombien(iso(a.echeance), aujourdhui)} : ${nomTypeActivite(a.type)} : ${a.resume} — ${quandFr(a)}`.slice(
+        0,
+        255,
+      );
+    await db.notification.createMany({
+      data: actifs.map((u) => ({
+        utilisateurId: u.id,
+        genre: "rappel",
+        texte,
+        lien: lienActivite(a),
+      })),
+    });
+    await db.activite.update({
+      where: { id: a.id },
+      data: { rappelNotifieLe: maintenant },
+    });
+    notifies += actifs.length;
+  }
+  return { notifies };
 }

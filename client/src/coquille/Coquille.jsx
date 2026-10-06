@@ -346,7 +346,7 @@ function Cloche() {
             )}
           </div>
           {messages.length === 0 ? (
-            <p className="px-4 py-4 text-[13px] text-encre-3">Les mentions (@vous) et les changements sur les fiches que vous suivez apparaîtront ici.</p>
+            <p className="px-4 py-4 text-[13px] text-encre-3">Les mentions (@vous), les invitations, les rappels et les changements sur les fiches que vous suivez apparaîtront ici.</p>
           ) : (
             <ul className="max-h-80 overflow-y-auto p-2">
               {messages.map((m) => (
@@ -360,7 +360,7 @@ function Cloche() {
                     }}
                     className={cx('flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-surface-2', !m.lue && 'bg-cyan-voile/60')}
                   >
-                    <span className={cx('mt-1 size-2 shrink-0 rounded-full', m.lue ? 'bg-trait-fort' : m.genre === 'mention' ? 'bg-alerte' : 'bg-cyan')} aria-hidden />
+                    <span className={cx('mt-1 size-2 shrink-0 rounded-full', m.lue ? 'bg-trait-fort' : m.genre === 'mention' ? 'bg-alerte' : m.genre === 'rappel' ? 'bg-attente' : 'bg-cyan')} aria-hidden />
                     <span className="min-w-0 flex-1">
                       <span className={cx('block', !m.lue && 'font-medium')}>{m.texte}</span>
                       <span className="text-[12.5px] text-encre-3">{depuis(m.creeLe)}</span>

@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { db } from '../db.js';
 import { valider } from '../erreurs.js';
 import { exigerConnexion } from '../plugins/authentification.js';
+import { QUI_ME_CONCERNENT } from '../services/activites.js';
 import { DOUBLONS_HORS_ARCHIVES } from '../services/archivage.js';
 import { filtreAClasser } from './tri.js';
 
@@ -28,7 +29,7 @@ export default async function routesNotifications(app) {
       trieur ? db.document.count({ where: filtreAClasser(requete.utilisateur) }) : 0,
       trieur ? db.doublon.count({ where: { decision: 'en_attente', documentA: cote, documentB: cote, ...DOUBLONS_HORS_ARCHIVES } }) : 0,
       // Mes activités en retard ou du jour, comme le compteur d'Odoo.
-      db.activite.count({ where: { assigneId: requete.utilisateur.id, faiteLe: null, echeance: { lte: new Date(`${jourCasablanca()}T00:00:00Z`) } } }),
+      db.activite.count({ where: { ...QUI_ME_CONCERNENT(requete.utilisateur.id), faiteLe: null, echeance: { lte: new Date(`${jourCasablanca()}T00:00:00Z`) } } }),
     ]);
 
     const taches = [];

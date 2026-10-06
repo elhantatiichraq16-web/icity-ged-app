@@ -2,16 +2,32 @@
  * Les activités, sur le modèle d'Odoo : planifier un rappel sur la fiche d'un
  * marché ou d'un client, le retrouver dans « Mes activités », le marquer fait.
  *
+ * Une activité peut aussi être un événement libre, sans fiche (une réunion
+ * d'équipe, une formation), avec une heure, des participants et un rappel
+ * quelques jours avant : c'est ce que crée un clic sur un jour du calendrier.
+ *
  * Chaque geste laisse une ligne au journal, sur la fiche concernée : il se lit
  * donc dans son fil d'activité (« a planifié… », « a fait… »).
  */
-import { z } from 'zod';
-import { etatActivite, jourCasablanca, nomTypeActivite, schemaActivite } from '@icity/commun/activites';
-import { db } from '../db.js';
-import { ErreurHttp, interdit, introuvable, valider } from '../erreurs.js';
-import { exiger, exigerConnexion } from '../plugins/authentification.js';
-import { journaliser } from '../services/journal.js';
-import { abonner } from '../services/notifications.js';
+import { z } from "zod";
+import {
+  debutRappel,
+  etatActivite,
+  jourCasablanca,
+  nomTypeActivite,
+  plageHoraire,
+  schemaActivite,
+} from "@icity/commun/activites";
+import { db } from "../db.js";
+import { ErreurHttp, interdit, introuvable, valider } from "../erreurs.js";
+import { exiger, exigerConnexion } from "../plugins/authentification.js";
+import {
+  lienActivite,
+  QUI_ME_CONCERNENT,
+  quandFr,
+} from "../services/activites.js";
+import { journaliser } from "../services/journal.js";
+import { abonner } from "../services/notifications.js";
 
 const date = (v) => new Date(`${v}T00:00:00Z`);
 const jour = (d) => d.toISOString().slice(0, 10);
@@ -23,6 +39,10 @@ const AVEC = {
   client: { select: { id: true, nom: true } },
   fournisseur: { select: { id: true, nom: true } },
   commande: { select: { id: true, fournisseur: { select: { nom: true } } } },
+  participants: {
+    select: { utilisateur: { select: { id: true, nom: true } } },
+    orderBy: { utilisateurId: "asc" },
+  },
 };
 
 /** Une activité, telle que les écrans l'attendent. */
@@ -35,49 +55,115 @@ function vueActivite(a, aujourdhui = jourCasablanca()) {
     resume: a.resume,
     note: a.note,
     echeance,
-    etat: a.faiteLe ? 'faite' : etatActivite(echeance, aujourdhui),
+    heure: a.heure ?? null,
+    dureeMinutes: a.dureeMinutes ?? null,
+    plage: plageHoraire(a.heure, a.dureeMinutes),
+    rappelJours: a.rappelJours ?? null,
+    // Dans la période de rappel, avant le jour même : « bientôt ».
+    enRappel:
+      !a.faiteLe &&
+      Boolean(a.rappelJours) &&
+      echeance > aujourdhui &&
+      debutRappel(echeance, a.rappelJours) <= aujourdhui,
+    etat: a.faiteLe ? "faite" : etatActivite(echeance, aujourdhui),
+    participants: (a.participants ?? []).map((p) => p.utilisateur),
     assigne: a.assigne,
     creePar: a.creePar,
     marche: a.marche,
     client: a.client,
     fournisseur: a.fournisseur,
-    commande: a.commande ? { id: a.commande.id, fournisseur: a.commande.fournisseur?.nom ?? null } : null,
+    commande: a.commande
+      ? { id: a.commande.id, fournisseur: a.commande.fournisseur?.nom ?? null }
+      : null,
     faiteLe: a.faiteLe,
     compteRendu: a.compteRendu,
   };
 }
 
-/** La fiche qui porte l'activité, pour le journal (et donc pour son fil). */
+/** La fiche qui porte l'activité, pour le journal (et donc pour son fil). Un événement libre se journalise sur lui-même. */
 const ficheDe = (a) =>
   a.marcheId
-    ? { objetType: 'Marche', objetId: a.marcheId }
+    ? { objetType: "Marche", objetId: a.marcheId }
     : a.clientId
-      ? { objetType: 'Client', objetId: a.clientId }
+      ? { objetType: "Client", objetId: a.clientId }
       : a.commandeId
-        ? { objetType: 'CommandeFournisseur', objetId: a.commandeId }
-        : { objetType: 'Fournisseur', objetId: a.fournisseurId };
+        ? { objetType: "CommandeFournisseur", objetId: a.commandeId }
+        : a.fournisseurId
+          ? { objetType: "Fournisseur", objetId: a.fournisseurId }
+          : { objetType: "Activite", objetId: a.id };
 
 /** Le résumé lisible d'une activité, pour le journal. */
 const libelle = (a) => `${nomTypeActivite(a.type)} : ${a.resume}`;
 
+/**
+ * Prévient dans la cloche les personnes conviées (la personne chargée et les
+ * participants), sauf l'auteur du geste.
+ */
+async function prevenirConvies(a, ids, auteurId) {
+  const destinataires = [...new Set(ids)].filter((id) => id && id !== auteurId);
+  if (!destinataires.length) return;
+  const auteur = await db.utilisateur.findUnique({
+    where: { id: auteurId },
+    select: { nom: true },
+  });
+  const texte =
+    `${auteur?.nom ?? "Quelqu’un"} vous a convié : ${libelle(a)} — ${quandFr(a)}`.slice(
+      0,
+      255,
+    );
+  await db.notification.createMany({
+    data: destinataires.map((utilisateurId) => ({
+      utilisateurId,
+      parId: auteurId,
+      genre: "invitation",
+      texte,
+      lien: lienActivite(a),
+    })),
+  });
+}
+
 /** @param {import('fastify').FastifyInstance} app */
 export default async function routesActivites(app) {
-  app.addHook('preHandler', exigerConnexion);
-  const planifier = { preHandler: exiger('planifier', 'Activite') };
+  app.addHook("preHandler", exigerConnexion);
+  const planifier = { preHandler: exiger("planifier", "Activite") };
 
   /** On touche à une activité qu'on a créée, qu'on doit faire, ou si l'on dirige. */
   async function activiteModifiable(requete) {
-    const a = await db.activite.findUnique({ where: { id: Number(requete.params.id) || 0 } });
-    if (!a) throw introuvable('Activité');
+    const a = await db.activite.findUnique({
+      where: { id: Number(requete.params.id) || 0 },
+    });
+    if (!a) throw introuvable("Activité");
     const moi = requete.utilisateur.id;
-    if (a.assigneId !== moi && a.creeParId !== moi && !requete.droits.can('gerer', 'Activite')) throw interdit();
+    if (
+      a.assigneId !== moi &&
+      a.creeParId !== moi &&
+      !requete.droits.can("gerer", "Activite")
+    )
+      throw interdit();
     return a;
+  }
+
+  /** Les participants : des comptes actifs, sans doublon, hors la personne chargée. */
+  async function participantsValides(ids, assigneId) {
+    const uniques = [...new Set(ids)].filter((id) => id !== assigneId);
+    if (!uniques.length) return [];
+    const actifs = await db.utilisateur.count({
+      where: { id: { in: uniques }, actif: true },
+    });
+    if (actifs !== uniques.length)
+      throw new ErreurHttp(422, "Certains champs sont à corriger.", {
+        erreurs: { participantIds: "Un participant n’a pas de compte actif." },
+      });
+    return uniques;
   }
 
   /** La personne choisie doit être un compte actif. */
   async function assigneValide(assigneId) {
     const u = await db.utilisateur.findUnique({ where: { id: assigneId } });
-    if (!u || !u.actif) throw new ErreurHttp(422, 'Certains champs sont à corriger.', { erreurs: { assigneId: 'Cette personne n’a pas de compte actif.' } });
+    if (!u || !u.actif)
+      throw new ErreurHttp(422, "Certains champs sont à corriger.", {
+        erreurs: { assigneId: "Cette personne n’a pas de compte actif." },
+      });
     return u;
   }
 
@@ -85,17 +171,23 @@ export default async function routesActivites(app) {
    * Les comptes actifs, pour choisir à qui confier une activité. Les noms
    * seulement : la liste complète des utilisateurs reste à l'administration.
    */
-  app.get('/api/equipe', async () => {
-    return db.utilisateur.findMany({ where: { actif: true, motDePasse: { not: null } }, select: { id: true, nom: true }, orderBy: { nom: 'asc' } });
+  app.get("/api/equipe", async () => {
+    return db.utilisateur.findMany({
+      where: { actif: true, motDePasse: { not: null } },
+      select: { id: true, nom: true },
+      orderBy: { nom: "asc" },
+    });
   });
 
   /**
    * Les activités à faire : celles d'une fiche (`marcheId` ou `clientId`), ou
    * les miennes (`miennes=1`), de la plus urgente à la plus lointaine.
    */
-  app.get('/api/activites', async (requete) => {
-    const { marcheId, clientId, fournisseurId, commandeId, miennes } = requete.query;
-    if (!marcheId && !clientId && !fournisseurId && !commandeId && !miennes) throw new ErreurHttp(422, 'Indiquez une fiche, ou « miennes ».');
+  app.get("/api/activites", async (requete) => {
+    const { marcheId, clientId, fournisseurId, commandeId, miennes } =
+      requete.query;
+    if (!marcheId && !clientId && !fournisseurId && !commandeId && !miennes)
+      throw new ErreurHttp(422, "Indiquez une fiche, ou « miennes ».");
     const activites = await db.activite.findMany({
       where: {
         faiteLe: null,
@@ -103,47 +195,107 @@ export default async function routesActivites(app) {
         ...(clientId ? { clientId: Number(clientId) || 0 } : {}),
         ...(fournisseurId ? { fournisseurId: Number(fournisseurId) || 0 } : {}),
         ...(commandeId ? { commandeId: Number(commandeId) || 0 } : {}),
-        ...(miennes ? { assigneId: requete.utilisateur.id } : {}),
+        ...(miennes ? QUI_ME_CONCERNENT(requete.utilisateur.id) : {}),
       },
       include: AVEC,
-      orderBy: [{ echeance: 'asc' }, { id: 'asc' }],
+      orderBy: [
+        { echeance: "asc" },
+        { heure: { sort: "asc", nulls: "first" } },
+        { id: "asc" },
+      ],
       take: 200,
     });
     const aujourdhui = jourCasablanca();
     return activites.map((a) => vueActivite(a, aujourdhui));
   });
 
-  app.post('/api/activites', planifier, async (requete, reponse) => {
+  /** Une activité, pour l'ouvrir depuis le calendrier. */
+  app.get("/api/activites/:id", async (requete) => {
+    const a = await db.activite.findUnique({
+      where: { id: Number(requete.params.id) || 0 },
+      include: AVEC,
+    });
+    if (!a) throw introuvable("Activité");
+    return vueActivite(a);
+  });
+
+  app.post("/api/activites", planifier, async (requete, reponse) => {
     const corps = requete.body ?? {};
     const donnees = valider(schemaActivite, corps);
     const idFiche = z.number().int().positive().nullish();
     const { marcheId, clientId, fournisseurId, commandeId } = valider(
-      z.object({ marcheId: idFiche, clientId: idFiche, fournisseurId: idFiche, commandeId: idFiche }),
-      { marcheId: corps.marcheId, clientId: corps.clientId, fournisseurId: corps.fournisseurId, commandeId: corps.commandeId },
+      z.object({
+        marcheId: idFiche,
+        clientId: idFiche,
+        fournisseurId: idFiche,
+        commandeId: idFiche,
+      }),
+      {
+        marcheId: corps.marcheId,
+        clientId: corps.clientId,
+        fournisseurId: corps.fournisseurId,
+        commandeId: corps.commandeId,
+      },
     );
-    if ([marcheId, clientId, fournisseurId, commandeId].filter(Boolean).length !== 1) {
-      throw new ErreurHttp(422, 'Une activité se pose sur une seule fiche : un marché, un client, un fournisseur ou une commande.');
+    if (
+      [marcheId, clientId, fournisseurId, commandeId].filter(Boolean).length > 1
+    ) {
+      throw new ErreurHttp(
+        422,
+        "Une activité se pose sur une seule fiche : un marché, un client, un fournisseur ou une commande.",
+      );
     }
-    if (marcheId && !(await db.marche.findUnique({ where: { id: marcheId } }))) throw introuvable('Marché');
-    if (clientId && !(await db.client.findUnique({ where: { id: clientId } }))) throw introuvable('Client');
-    if (fournisseurId && !(await db.fournisseur.findUnique({ where: { id: fournisseurId } }))) throw introuvable('Fournisseur');
-    if (commandeId && !(await db.commandeFournisseur.findUnique({ where: { id: commandeId } }))) throw introuvable('Commande');
+    if (marcheId && !(await db.marche.findUnique({ where: { id: marcheId } })))
+      throw introuvable("Marché");
+    if (clientId && !(await db.client.findUnique({ where: { id: clientId } })))
+      throw introuvable("Client");
+    if (
+      fournisseurId &&
+      !(await db.fournisseur.findUnique({ where: { id: fournisseurId } }))
+    )
+      throw introuvable("Fournisseur");
+    if (
+      commandeId &&
+      !(await db.commandeFournisseur.findUnique({ where: { id: commandeId } }))
+    )
+      throw introuvable("Commande");
     const assigne = await assigneValide(donnees.assigneId);
+    const { participantIds, ...champs } = donnees;
+    const participants = await participantsValides(
+      participantIds,
+      donnees.assigneId,
+    );
 
     const cree = await db.activite.create({
-      data: { ...donnees, echeance: date(donnees.echeance), marcheId: marcheId ?? null, clientId: clientId ?? null, fournisseurId: fournisseurId ?? null, commandeId: commandeId ?? null, creeParId: requete.utilisateur.id },
+      data: {
+        ...champs,
+        echeance: date(donnees.echeance),
+        marcheId: marcheId ?? null,
+        clientId: clientId ?? null,
+        fournisseurId: fournisseurId ?? null,
+        commandeId: commandeId ?? null,
+        creeParId: requete.utilisateur.id,
+        participants: {
+          create: participants.map((utilisateurId) => ({ utilisateurId })),
+        },
+      },
       include: AVEC,
     });
-    // La personne chargée et l'auteur suivent la fiche : ils en sauront la suite.
+    // La personne chargée, les participants et l'auteur suivent la fiche : ils en sauront la suite.
     const { objetType, objetId } = ficheDe(cree);
-    await abonner(cree.assigneId, objetType, objetId);
-    await abonner(requete.utilisateur.id, objetType, objetId);
+    for (const id of [cree.assigneId, ...participants, requete.utilisateur.id])
+      await abonner(id, objetType, objetId);
+    await prevenirConvies(
+      cree,
+      [cree.assigneId, ...participants],
+      requete.utilisateur.id,
+    );
     await journaliser(
       {
         utilisateurId: requete.utilisateur.id,
-        action: 'activite.planifiee',
+        action: "activite.planifiee",
         ...ficheDe(cree),
-        commentaire: `${libelle(cree)} — pour ${assigne.nom}, le ${donnees.echeance}`,
+        commentaire: `${libelle(cree)} — pour ${assigne.nom}, ${quandFr(cree)}`,
         ip: requete.ip,
       },
       requete.log,
@@ -151,30 +303,79 @@ export default async function routesActivites(app) {
     return reponse.code(201).send(vueActivite(cree));
   });
 
-  app.patch('/api/activites/:id', async (requete) => {
+  app.patch("/api/activites/:id", async (requete) => {
     const avant = await activiteModifiable(requete);
-    if (avant.faiteLe) throw new ErreurHttp(409, 'Cette activité est déjà faite.');
+    if (avant.faiteLe)
+      throw new ErreurHttp(409, "Cette activité est déjà faite.");
     const donnees = valider(schemaActivite, requete.body);
     await assigneValide(donnees.assigneId);
-    const apres = await db.activite.update({ where: { id: avant.id }, data: { ...donnees, echeance: date(donnees.echeance) }, include: AVEC });
+    const { participantIds, ...champs } = donnees;
+    const participants = await participantsValides(
+      participantIds,
+      donnees.assigneId,
+    );
+    const avantIds = (
+      await db.participantActivite.findMany({
+        where: { activiteId: avant.id },
+        select: { utilisateurId: true },
+      })
+    ).map((p) => p.utilisateurId);
+    // Une nouvelle date ou un nouveau délai : le rappel repartira.
+    const rappelChange =
+      jour(avant.echeance) !== donnees.echeance ||
+      (avant.rappelJours ?? null) !== (donnees.rappelJours ?? null);
+    const apres = await db.activite.update({
+      where: { id: avant.id },
+      data: {
+        ...champs,
+        echeance: date(donnees.echeance),
+        ...(rappelChange ? { rappelNotifieLe: null } : {}),
+        participants: {
+          deleteMany: {},
+          create: participants.map((utilisateurId) => ({ utilisateurId })),
+        },
+      },
+      include: AVEC,
+    });
+    // Seuls les nouveaux venus sont prévenus.
+    const nouveaux = [...participants, donnees.assigneId].filter(
+      (id) => !avantIds.includes(id) && id !== avant.assigneId,
+    );
+    await prevenirConvies(apres, nouveaux, requete.utilisateur.id);
+    const { objetType, objetId } = ficheDe(apres);
+    for (const id of nouveaux) await abonner(id, objetType, objetId);
     return vueActivite(apres);
   });
 
   /** Marquer fait, avec un compte rendu facultatif (« Le client envoie le PV lundi »). */
-  app.post('/api/activites/:id/fait', async (requete) => {
+  app.post("/api/activites/:id/fait", async (requete) => {
     const avant = await activiteModifiable(requete);
-    if (avant.faiteLe) throw new ErreurHttp(409, 'Cette activité est déjà faite.');
+    if (avant.faiteLe)
+      throw new ErreurHttp(409, "Cette activité est déjà faite.");
     const { compteRendu } = valider(
-      z.object({ compteRendu: z.string().trim().max(2000, { error: '2 000 caractères au plus.' }).transform((v) => v || null).nullish() }),
+      z.object({
+        compteRendu: z
+          .string()
+          .trim()
+          .max(2000, { error: "2 000 caractères au plus." })
+          .transform((v) => v || null)
+          .nullish(),
+      }),
       requete.body ?? {},
     );
-    const apres = await db.activite.update({ where: { id: avant.id }, data: { faiteLe: new Date(), compteRendu: compteRendu ?? null }, include: AVEC });
+    const apres = await db.activite.update({
+      where: { id: avant.id },
+      data: { faiteLe: new Date(), compteRendu: compteRendu ?? null },
+      include: AVEC,
+    });
     await journaliser(
       {
         utilisateurId: requete.utilisateur.id,
-        action: 'activite.faite',
+        action: "activite.faite",
         ...ficheDe(avant),
-        commentaire: compteRendu ? `${libelle(avant)} — ${compteRendu}` : libelle(avant),
+        commentaire: compteRendu
+          ? `${libelle(avant)} — ${compteRendu}`
+          : libelle(avant),
         ip: requete.ip,
       },
       requete.log,
@@ -183,10 +384,19 @@ export default async function routesActivites(app) {
   });
 
   /** Annuler une activité devenue inutile : elle disparaît, la trace reste au fil. */
-  app.delete('/api/activites/:id', async (requete) => {
+  app.delete("/api/activites/:id", async (requete) => {
     const a = await activiteModifiable(requete);
     await db.activite.delete({ where: { id: a.id } });
-    await journaliser({ utilisateurId: requete.utilisateur.id, action: 'activite.annulee', ...ficheDe(a), commentaire: libelle(a), ip: requete.ip }, requete.log);
+    await journaliser(
+      {
+        utilisateurId: requete.utilisateur.id,
+        action: "activite.annulee",
+        ...ficheDe(a),
+        commentaire: libelle(a),
+        ip: requete.ip,
+      },
+      requete.log,
+    );
     return { ok: true };
   });
 }
