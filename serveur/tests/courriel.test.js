@@ -164,7 +164,8 @@ describe('enregistrement d’un message', () => {
     const ctx = await contexte();
     await enregistrerMessage(await simpleParser(eml({ de: 'marches@tgr.gov.ma', objet: 'Demande de caution', messageId: '<recu-1@x.ma>' })), ctx);
     await enregistrerMessage(
-      await simpleParser(eml({ de: 'documents@icity.ma', a: 'inconnu@ailleurs.ma', objet: 'RE: Demande de caution', messageId: '<envoye-1@x.ma>', inReplyTo: '<recu-1@x.ma>' })),
+      // Sans In-Reply-To (un client mail qui ne le pose pas) : seul l'objet relie les deux.
+      await simpleParser(eml({ de: 'documents@icity.ma', a: 'inconnu@ailleurs.ma', objet: 'RE: Demande de caution', messageId: '<envoye-1@x.ma>' })),
       ctx,
     );
 
@@ -172,6 +173,23 @@ describe('enregistrement d’un message', () => {
     const rattachements = rattacherParFil(mails);
     expect(rattachements).toHaveLength(1);
     expect(rattachements[0].clientId).toBe(client.id);
+  });
+
+  it('une réponse suit le marché du mail auquel elle répond, et ceux qui suivent le marché sont prévenus', async () => {
+    const ctx = await contexte();
+    const essai = await db.marche.create({ data: { reference: 'ESSAI-01/2026', referenceNormalisee: 'ESSAI-01/2026' } });
+    const suiveur = await db.utilisateur.findFirst();
+    if (suiveur) await db.abonnement.create({ data: { utilisateurId: suiveur.id, objetType: 'Marche', objetId: essai.id } });
+    // Le mail envoyé depuis la fiche du marché…
+    await db.mail.create({
+      data: { compteId: ctx.compte.id, direction: 'envoye', messageId: '<envoi-essai@gmail.com>', fil: 'essai', expediteur: 'documents@icity.ma', destinataires: ['moi@icloud.com'], date: new Date(), objet: 'Essai du courriel', marcheId: essai.id, statutRattachement: 'a_rattacher' },
+    });
+    // … et la réponse, d'une adresse inconnue, sans référence lisible dans l'objet.
+    const r = await enregistrerMessage(await simpleParser(eml({ de: 'moi@icloud.com', objet: 'Re: Essai du courriel', messageId: '<reponse@icloud.com>', inReplyTo: '<envoi-essai@gmail.com>' })), ctx);
+    expect(r.mail).toMatchObject({ marcheId: essai.id, statutRattachement: 'rattache' });
+    expect(r.raisons.fil).toMatch(/réponse à « Essai du courriel »/);
+    expect(await db.journal.count({ where: { action: 'mail.recu', objetId: r.mail.id } })).toBe(1);
+    if (suiveur) expect(await db.notification.count({ where: { utilisateurId: suiveur.id, texte: { startsWith: 'Mail reçu de moi@icloud.com' } } })).toBe(1);
   });
 
   it('deux clients sur le même objet : on ne devine pas', async () => {

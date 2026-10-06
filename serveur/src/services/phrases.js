@@ -16,6 +16,7 @@ export const PHRASES = {
   'marche.declare_par_attestation': 'a déclaré l’affaire d’après une attestation',
   'achats.import': 'a importé le classeur des achats',
   'activite.planifiee': 'a planifié une activité',
+  'mail.recu': 'a reçu un mail',
   'activite.faite': 'a fait une activité',
   'activite.annulee': 'a annulé une activité',
   'client.cree': 'a créé le client',

@@ -20,6 +20,7 @@ import { db } from '../db.js';
 import { EN_COURS } from './archivage.js';
 import { dechiffrer } from '../securite/crypto.js';
 import { preparerMail, rattacherParFil } from './courriel-entrant.js';
+import { journaliser } from './journal.js';
 import { recalculerPhase } from './phase-marche.js';
 import { FORMATS, verserFichier } from './stockage.js';
 
@@ -130,7 +131,9 @@ export async function enregistrerMessage(message, ctx, { utilisateurId = null } 
   const existant = await db.mail.findUnique({ where: { messageId: donnees.messageId } });
   if (existant) return null;
 
+  await suivreLeMailDOrigine(donnees, _raisons);
   const mail = await db.mail.create({ data: donnees });
+  if (mail.direction === 'recu') await signalerReception(mail, utilisateurId);
 
   let pieces = 0;
   for (const jointe of message.attachments ?? []) {
@@ -162,6 +165,42 @@ export async function enregistrerMessage(message, ctx, { utilisateurId = null } 
   }
 
   return { mail, pieces, raisons: _raisons };
+}
+
+/**
+ * Une réponse suit le mail auquel elle répond, comme dans Odoo : si l'objet ne
+ * cite pas de marché, elle prend le marché et le client du message d'origine
+ * (en-têtes In-Reply-To et References). Un marché archivé ne se reprend pas.
+ */
+async function suivreLeMailDOrigine(donnees, raisons) {
+  if (donnees.marcheId && donnees.clientId) return;
+  const ids = [donnees.inReplyTo, ...String(donnees.referencesMail ?? '').split(/\s+/)].filter(Boolean);
+  if (!ids.length) return;
+  const origine = await db.mail.findFirst({
+    where: { messageId: { in: ids }, OR: [{ marcheId: { not: null } }, { clientId: { not: null } }] },
+    orderBy: { date: 'desc' },
+  });
+  if (!origine) return;
+  const marcheEnCours = origine.marcheId ? await db.marche.count({ where: { id: origine.marcheId, ...EN_COURS } }) : 0;
+  if (!donnees.marcheId && marcheEnCours) donnees.marcheId = origine.marcheId;
+  if (!donnees.clientId && origine.clientId) donnees.clientId = origine.clientId;
+  if (donnees.marcheId || donnees.clientId) {
+    donnees.statutRattachement = 'rattache';
+    raisons.fil = `réponse à « ${origine.objet} »`;
+  }
+}
+
+/** Un mail reçu laisse une ligne au journal ; rangé sous un marché, ceux qui le suivent sont prévenus. */
+async function signalerReception(mail, utilisateurId) {
+  await journaliser({ utilisateurId, action: 'mail.recu', objetType: 'Mail', objetId: mail.id, apres: { de: mail.expediteur, objet: mail.objet, marcheId: mail.marcheId } });
+  if (!mail.marcheId) return;
+  const [marche, abonnes] = await Promise.all([
+    db.marche.findUnique({ where: { id: mail.marcheId }, select: { reference: true } }),
+    db.abonnement.findMany({ where: { objetType: 'Marche', objetId: mail.marcheId, utilisateur: { actif: true } }, select: { utilisateurId: true } }),
+  ]);
+  if (!abonnes.length) return;
+  const texte = `Mail reçu de ${mail.expediteur} : « ${mail.objet} » — ${marche?.reference ?? ''}`.slice(0, 255);
+  await db.notification.createMany({ data: abonnes.map((a) => ({ utilisateurId: a.utilisateurId, genre: 'suivi', texte, lien: `/marches/${mail.marcheId}` })) });
 }
 
 /** Les étiquettes de traitement d'une pièce venue du courriel (§4). */
