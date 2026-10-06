@@ -59,7 +59,7 @@ export function PageAnalyses() {
     <div className="animate-apparition">
       <EnTetePage
         titre="Analyses"
-        description="Croisez une mesure par client, fournisseur, mois… en tableau ou en graphique, comme dans Odoo."
+        description="Croisez une mesure par client, fournisseur, mois… en tableau ou en graphique."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <div role="group" aria-label="Affichage" className="inline-flex rounded-[10px] border border-trait bg-surface p-0.5">

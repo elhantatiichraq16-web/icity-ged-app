@@ -167,4 +167,20 @@ describe('activités', () => {
     const r = await requete('POST', '/api/activites', { resume: 'Essai', echeance: dans(1), assigneId: chef.id, participantIds: [inactif.id] });
     expect(r.json().erreurs.participantIds).toMatch(/compte actif/);
   });
+
+  it('une activité sur un fournisseur reste aux achats et à la direction', async () => {
+    const acheteur = await creerUtilisateur('directeur');
+    const fournisseur = await db.fournisseur.upsert({ where: { nom: 'Fournisseur d’essai des activités' }, update: {}, create: { nom: 'Fournisseur d’essai des activités' } });
+    const a = await db.activite.create({ data: { resume: 'Relancer pour la livraison', echeance: new Date(`${dans(1)}T00:00:00Z`), assigneId: acheteur.id, fournisseurId: fournisseur.id } });
+    await db.activite.create({ data: { resume: 'Visible de tous', echeance: new Date(`${dans(1)}T00:00:00Z`), assigneId: acheteur.id, marcheId: marche.id } });
+
+    const lecteur = en(app, await connecter(app, (await creerUtilisateur('lecteur')).email));
+    expect((await lecteur('GET', `/api/activites/${a.id}`)).statusCode).toBe(404);
+    expect((await lecteur('GET', `/api/activites?fournisseurId=${fournisseur.id}`)).json()).toEqual([]);
+    const cal = (await lecteur('GET', `/api/calendrier?debut=${dans(0)}&fin=${dans(5)}`)).json().filter((e) => e.type === 'activite');
+    expect(cal.map((e) => e.titre)).toEqual(['Visible de tous']);
+
+    const direction = en(app, await connecter(app, acheteur.email));
+    expect((await direction('GET', `/api/activites/${a.id}`)).statusCode).toBe(200);
+  });
 });

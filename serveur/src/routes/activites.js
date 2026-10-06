@@ -14,7 +14,7 @@ import { debutRappel, etatActivite, jourCasablanca, nomTypeActivite, plageHorair
 import { db } from '../db.js';
 import { ErreurHttp, interdit, introuvable, valider } from '../erreurs.js';
 import { exiger, exigerConnexion } from '../plugins/authentification.js';
-import { lienActivite, QUI_ME_CONCERNENT, quandFr } from '../services/activites.js';
+import { activitesVisibles, activiteVisible, lienActivite, QUI_ME_CONCERNENT, quandFr } from '../services/activites.js';
 import { journaliser } from '../services/journal.js';
 import { abonner } from '../services/notifications.js';
 
@@ -140,6 +140,7 @@ export default async function routesActivites(app) {
         ...(fournisseurId ? { fournisseurId: Number(fournisseurId) || 0 } : {}),
         ...(commandeId ? { commandeId: Number(commandeId) || 0 } : {}),
         ...(miennes ? QUI_ME_CONCERNENT(requete.utilisateur.id) : {}),
+        ...activitesVisibles(requete.droits),
       },
       include: AVEC,
       orderBy: [{ echeance: 'asc' }, { heure: { sort: 'asc', nulls: 'first' } }, { id: 'asc' }],
@@ -152,7 +153,8 @@ export default async function routesActivites(app) {
   /** Une activité, pour l'ouvrir depuis le calendrier. */
   app.get('/api/activites/:id', async (requete) => {
     const a = await db.activite.findUnique({ where: { id: Number(requete.params.id) || 0 }, include: AVEC });
-    if (!a) throw introuvable('Activité');
+    // Introuvable plutôt qu'interdit : on ne confirme pas qu'elle existe.
+    if (!a || !activiteVisible(requete.droits, a)) throw introuvable('Activité');
     return vueActivite(a);
   });
 

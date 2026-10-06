@@ -15,7 +15,7 @@ import { echeanceDe, etatEcheance, phaseDe } from '@icity/commun/marches';
 import { db } from '../db.js';
 import { valider } from '../erreurs.js';
 import { exigerConnexion } from '../plugins/authentification.js';
-import { lienActivite, QUI_ME_CONCERNENT } from '../services/activites.js';
+import { activitesVisibles, lienActivite, QUI_ME_CONCERNENT } from '../services/activites.js';
 import { EN_COURS } from '../services/archivage.js';
 import { piecesParMarche } from '../services/phase-marche.js';
 
@@ -52,7 +52,7 @@ export default async function routesCalendrier(app) {
 
     // ── Les activités à faire ──
     const activites = await db.activite.findMany({
-      where: { faiteLe: null, echeance: entre, ...(miennes ? QUI_ME_CONCERNENT(requete.utilisateur.id) : {}) },
+      where: { faiteLe: null, echeance: entre, ...(miennes ? QUI_ME_CONCERNENT(requete.utilisateur.id) : {}), ...activitesVisibles(requete.droits) },
       include: {
         assigne: { select: { id: true, nom: true } },
         marche: { select: { id: true, reference: true } },
