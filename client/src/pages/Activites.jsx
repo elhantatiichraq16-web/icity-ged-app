@@ -148,7 +148,7 @@ export function ModaleActivite({ ouverte, surChangement, fiche, activite, date }
         pied={
           <>
             {activite && (
-              <Bouton variante="fantome" icone={Trash2} onClick={() => setConfirmerSuppression(true)} disabled={f.envoi} className="mr-auto text-alerte-texte hover:bg-alerte-voile">
+              <Bouton variante="secondaire" icone={Trash2} onClick={() => setConfirmerSuppression(true)} disabled={f.envoi} className="mr-auto text-alerte-texte! hover:bg-alerte-voile!">
                 Supprimer
               </Bouton>
             )}

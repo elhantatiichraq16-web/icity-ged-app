@@ -33,7 +33,8 @@ export function Modale({ ouverte, surChangement, titre, description, children, p
             </Dialog.Close>
           </div>
           {children}
-          {pied && <div className="mt-6 flex flex-wrap justify-end gap-2">{pied}</div>}
+          {/* Les boutons restent visibles en bas, même quand la fenêtre défile (petit écran). */}
+          {pied && <div className="sticky -bottom-6 z-10 -mx-6 -mb-6 mt-6 flex flex-wrap justify-end gap-2 border-t border-trait bg-surface px-6 py-4">{pied}</div>}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
