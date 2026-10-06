@@ -312,38 +312,46 @@ function Cloche() {
   const file = useQueryClient();
   const naviguer = useNavigate();
   const [ouverte, setOuverte] = useState(false);
+  // Les messages encore non lus à l'ouverture : ils restent surlignés tant que la cloche est ouverte.
+  const [nouveaux, setNouveaux] = useState(() => new Set());
   const taches = notifications.data?.taches ?? [];
   const messages = notifications.data?.messages ?? [];
   const nonLues = notifications.data?.nonLues ?? 0;
-  const pastille = taches.length + nonLues;
 
   async function marquerLues(ids) {
     await api('/api/notifications/lues', { methode: 'POST', corps: ids ? { ids } : {} }).catch(() => {});
     file.invalidateQueries({ queryKey: ['notifications'] });
   }
 
+  // Ouvrir la cloche, c'est avoir vu ses messages : le compteur retombe à zéro.
+  function ouvrirOuFermer(etat) {
+    setOuverte(etat);
+    if (etat) {
+      setNouveaux(new Set(messages.filter((m) => !m.lue).map((m) => m.id)));
+      if (nonLues > 0) marquerLues();
+    }
+  }
+
   return (
-    <Popover.Root open={ouverte} onOpenChange={setOuverte}>
+    <Popover.Root open={ouverte} onOpenChange={ouvrirOuFermer}>
       <Popover.Trigger
         className="relative grid size-10 place-items-center rounded-lg text-encre-2 hover:bg-surface-2 hover:text-encre"
         aria-label={nonLues ? `Notifications : ${nonLues} non lue(s)` : taches.length ? `Tâches en cours : ${taches.length}` : 'Notifications : aucune'}
       >
         <Bell className="size-5" aria-hidden />
-        {pastille > 0 && (
-          <span className={cx('absolute top-1.5 right-1.5 grid size-4 place-items-center rounded-full text-[10px] font-bold text-white', nonLues ? 'bg-alerte' : 'bg-cyan')} aria-hidden>
-            {pastille > 9 ? '9+' : pastille}
+        {/* Le chiffre : les messages pas encore vus. Des tâches en cours seulement : un simple point. */}
+        {nonLues > 0 ? (
+          <span className="absolute top-1.5 right-1.5 grid size-4 place-items-center rounded-full bg-alerte text-[10px] font-bold text-white" aria-hidden>
+            {nonLues > 9 ? '9+' : nonLues}
           </span>
+        ) : (
+          taches.length > 0 && <span className="absolute top-2 right-2 size-2 rounded-full bg-cyan" aria-hidden />
         )}
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content align="end" sideOffset={8} className="z-50 w-96 max-w-[calc(100vw-1rem)] animate-apparition rounded-carte border border-trait bg-surface shadow-haute focus:outline-none">
           <div className="flex items-center justify-between border-b border-trait px-4 py-3">
             <p className="font-semibold">Messages</p>
-            {nonLues > 0 && (
-              <button type="button" onClick={() => marquerLues()} className="text-[13px] font-medium text-cyan-texte hover:underline">
-                Tout marquer comme lu
-              </button>
-            )}
           </div>
           {messages.length === 0 ? (
             <p className="px-4 py-4 text-[13px] text-encre-3">Les mentions (@vous), les invitations, les rappels et les changements sur les fiches que vous suivez apparaîtront ici.</p>
@@ -358,11 +366,11 @@ function Cloche() {
                       setOuverte(false);
                       naviguer(m.lien);
                     }}
-                    className={cx('flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-surface-2', !m.lue && 'bg-cyan-voile/60')}
+                    className={cx('flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-surface-2', (!m.lue || nouveaux.has(m.id)) && 'bg-cyan-voile/60')}
                   >
-                    <span className={cx('mt-1 size-2 shrink-0 rounded-full', m.lue ? 'bg-trait-fort' : m.genre === 'mention' ? 'bg-alerte' : m.genre === 'rappel' ? 'bg-attente' : 'bg-cyan')} aria-hidden />
+                    <span className={cx('mt-1 size-2 shrink-0 rounded-full', m.lue && !nouveaux.has(m.id) ? 'bg-trait-fort' : m.genre === 'mention' ? 'bg-alerte' : m.genre === 'rappel' ? 'bg-attente' : 'bg-cyan')} aria-hidden />
                     <span className="min-w-0 flex-1">
-                      <span className={cx('block', !m.lue && 'font-medium')}>{m.texte}</span>
+                      <span className={cx('block', (!m.lue || nouveaux.has(m.id)) && 'font-medium')}>{m.texte}</span>
                       <span className="text-[12.5px] text-encre-3">{depuis(m.creeLe)}</span>
                     </span>
                   </button>
