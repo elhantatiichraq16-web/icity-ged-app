@@ -1,14 +1,18 @@
 /**
  * Envoi des e-mails de l'application : invitation et réinitialisation.
  *
- * En développement, tout part vers Mailpit (http://127.0.0.1:8025), qui
- * attrape les messages sans les distribuer. En test, rien ne sort : les
- * messages sont gardés en mémoire pour que les tests puissent les lire.
+ * Ils partent par le compte mail de l'application (Paramètres → Comptes mail)
+ * quand il y en a un d'actif : c'est le cas dès qu'un Gmail est configuré.
+ * Sinon, par le serveur SMTP du .env (Mailpit en développement, qui attrape
+ * les messages sans les distribuer). En test, rien ne sort : les messages
+ * sont gardés en mémoire pour que les tests puissent les lire.
  *
  * (La relève des boîtes IMAP, elle, vit dans courriel-imap.js.)
  */
 import nodemailer from 'nodemailer';
 import { config } from '../config.js';
+import { db } from '../db.js';
+import { transportDe } from './courriel-sortant.js';
 
 /** Les messages « envoyés » pendant les tests. */
 export const boiteDeTest = [];
@@ -44,6 +48,10 @@ function gabarit({ titre, paragraphes, bouton, lien, note }) {
 }
 
 async function envoyer({ a, sujet, texte, contenuHtml }) {
+  if (!config.estTest) {
+    const compte = await db.compteMail.findFirst({ where: { actif: true }, orderBy: { id: 'asc' } });
+    if (compte) return transportDe(compte).sendMail({ from: `"iCity GED" <${compte.adresse}>`, to: a, subject: sujet, text: texte, html: contenuHtml });
+  }
   const info = await transport.sendMail({ from: config.MAIL_EXPEDITEUR, to: a, subject: sujet, text: texte, html: contenuHtml });
   if (config.estTest) boiteDeTest.push({ a, sujet, texte });
   return info;

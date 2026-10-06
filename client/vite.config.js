@@ -18,5 +18,8 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    // Pas de police (ni d'image) glissée dans le CSS en « data: » : la CSP du
+    // serveur (font-src 'self') la bloquerait. Chaque fichier reste un fichier.
+    assetsInlineLimit: 0,
   },
 });

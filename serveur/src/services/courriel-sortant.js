@@ -37,7 +37,7 @@ export function serveurSmtp(serveurImap) {
   return String(serveurImap).replace(/^imap\./i, 'smtp.');
 }
 
-function transportDe(compte) {
+export function transportDe(compte) {
   return nodemailer.createTransport({
     host: serveurSmtp(compte.serveur),
     port: PORT_SMTP,
