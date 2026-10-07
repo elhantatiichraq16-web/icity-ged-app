@@ -345,7 +345,7 @@ function LigneActivite({ a, avecFiche }) {
               <BellRing className="size-3" aria-hidden /> rappel
             </span>
           )}
-          {avecFiche && !(a.marche || a.client || a.fournisseur || a.commande) && (
+          {avecFiche && !(a.marche || a.client || a.fournisseur || a.commande || a.offre) && (
             <>
               {' · '}
               <Link to={`/calendrier?date=${a.echeance}`} className="text-cyan-texte hover:underline">
@@ -353,7 +353,7 @@ function LigneActivite({ a, avecFiche }) {
               </Link>
             </>
           )}
-          {avecFiche && (a.marche || a.client || a.fournisseur || a.commande) && (
+          {avecFiche && (a.marche || a.client || a.fournisseur || a.commande || a.offre) && (
             <>
               {' · '}
               <Link
@@ -364,11 +364,13 @@ function LigneActivite({ a, avecFiche }) {
                       ? `/clients/${a.client.id}`
                       : a.commande
                         ? `/achats/commandes/${a.commande.id}`
-                        : `/achats/fournisseurs/${a.fournisseur.id}`
+                        : a.offre
+                          ? `/marches-potentiels/${a.offre.id}`
+                          : `/achats/fournisseurs/${a.fournisseur.id}`
                 }
                 className="text-cyan-texte hover:underline"
               >
-                {a.marche ? a.marche.reference : a.client ? a.client.nom : a.commande ? `commande ${a.commande.fournisseur ?? ''}` : a.fournisseur.nom}
+                {a.marche ? a.marche.reference : a.client ? a.client.nom : a.commande ? `commande ${a.commande.fournisseur ?? ''}` : a.offre ? `offre ${a.offre.nom}` : a.fournisseur.nom}
               </Link>
             </>
           )}
@@ -439,7 +441,7 @@ function LigneActivite({ a, avecFiche }) {
 export function ActivitesFiche({ type, id }) {
   const { droits } = useSession();
   const [planifier, setPlanifier] = useState(false);
-  const champ = { marche: 'marcheId', client: 'clientId', fournisseur: 'fournisseurId', commande: 'commandeId' }[type];
+  const champ = { marche: 'marcheId', client: 'clientId', fournisseur: 'fournisseurId', commande: 'commandeId', offre: 'offreId' }[type];
   const activites = useQuery({ queryKey: ['activites', type, String(id)], queryFn: () => api(`/api/activites?${champ}=${id}`) });
   const liste = activites.data ?? [];
 

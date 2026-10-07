@@ -26,6 +26,7 @@ import { ParametresModeles } from './ModelesMails.jsx';
 import { ParametresOcr } from './ParametresOcr.jsx';
 import { ParametresReferentiels } from './ParametresReferentiels.jsx';
 import { ParametresSauvegardes } from './ParametresSauvegardes.jsx';
+import { ParametresCriteres, ParametresSources } from './ParametresVeille.jsx';
 
 const ONGLETS = [
   { chemin: 'utilisateurs', libelle: 'Utilisateurs et rôles', phase: 1 },
@@ -35,14 +36,21 @@ const ONGLETS = [
   { chemin: 'ocr', libelle: 'OCR', phase: 1 },
   { chemin: 'sauvegardes', libelle: 'Sauvegardes', phase: 1 },
   { chemin: 'journal', libelle: 'Journal d’audit', phase: 1 },
+  { chemin: 'sources', libelle: 'Sources de marchés', phase: 1, droit: ['gerer', 'SourceMarche'] },
+  { chemin: 'criteres', libelle: 'Critères iCity', phase: 1, droit: ['gerer', 'CriteresMarches'] },
 ];
 
+/** Un onglet sans droit propre reste à l'administration. */
+const permis = (droits, o) => droits.can(...(o.droit ?? ['gerer', 'Utilisateur']));
+
 export function PageParametres() {
+  const { droits } = useSession();
+  const onglets = ONGLETS.filter((o) => permis(droits, o));
   return (
     <div className="animate-apparition">
       <EnTetePage titre="Paramètres" description="Comptes, référentiels et réglages de l’application." />
       <nav aria-label="Rubriques des paramètres" className="-mx-1 mb-6 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-trait px-1">
-        {ONGLETS.map((o) => (
+        {onglets.map((o) => (
           <NavLink
             key={o.chemin}
             // Chemin absolu : un chemin relatif se résoudrait depuis l'onglet
@@ -57,14 +65,22 @@ export function PageParametres() {
         ))}
       </nav>
       <Routes>
-        <Route index element={<Navigate to="utilisateurs" replace />} />
-        <Route path="utilisateurs" element={<Utilisateurs />} />
-        <Route path="courriel" element={<ParametresCourriel />} />
-        <Route path="modeles" element={<ParametresModeles />} />
-        <Route path="journal" element={<ParametresJournal />} />
-        <Route path="ocr" element={<ParametresOcr />} />
-        <Route path="referentiels" element={<ParametresReferentiels />} />
-        <Route path="sauvegardes" element={<ParametresSauvegardes />} />
+        <Route index element={<Navigate to={onglets[0]?.chemin ?? 'utilisateurs'} replace />} />
+        {[
+          ['utilisateurs', <Utilisateurs key="u" />],
+          ['courriel', <ParametresCourriel key="c" />],
+          ['modeles', <ParametresModeles key="m" />],
+          ['journal', <ParametresJournal key="j" />],
+          ['ocr', <ParametresOcr key="o" />],
+          ['referentiels', <ParametresReferentiels key="r" />],
+          ['sauvegardes', <ParametresSauvegardes key="s" />],
+          ['sources', <ParametresSources key="so" />],
+          ['criteres', <ParametresCriteres key="cr" />],
+        ]
+          .filter(([chemin]) => onglets.some((o) => o.chemin === chemin))
+          .map(([chemin, element]) => (
+            <Route key={chemin} path={chemin} element={element} />
+          ))}
         {ONGLETS.filter((o) => o.phase > 1).map((o) => (
           <Route
             key={o.chemin}

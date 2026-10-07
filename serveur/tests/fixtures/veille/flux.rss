@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Flux d'exemple, données fictives. -->
+<rss version="2.0">
+  <channel>
+    <title>Avis d'appels d'offres — source d'exemple</title>
+    <item>
+      <guid>exemple-2026-031</guid>
+      <title>Maintenance informatique et infrastructure réseau des services centraux</title>
+      <link>https://avis.exemple.ma/consultations/2026-031</link>
+      <description><![CDATA[<p>Marché de <b>maintenance informatique</b>.</p><script>alert(1)</script>]]></description>
+      <category>Services</category>
+      <pubDate>Mon, 05 Oct 2026 08:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <guid>exemple-2026-032</guid>
+      <title>Fourniture de carburant pour le parc automobile</title>
+      <link>https://avis.exemple.ma/consultations/2026-032</link>
+      <description>Carburant</description>
+    </item>
+  </channel>
+</rss>

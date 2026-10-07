@@ -5,6 +5,7 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BellRing, Copy, KeyRound, LaptopMinimal, ShieldCheck, ShieldOff, Trash2, Upload } from 'lucide-react';
+import { ALERTES_OFFRES } from '@icity/commun/marches-potentiels';
 import { schemaChangerMotDePasse, schemaCodeDeuxFacteurs, schemaProfil } from '@icity/commun/schemas';
 import { api } from '../api.js';
 import { CLE_MOI, useSession } from '../auth/session.jsx';
@@ -12,7 +13,7 @@ import { appareil, depuis, dateHeure } from '../format.js';
 import { useFormulaire } from '../formulaire.js';
 import { Avatar } from '../ui/Avatar.jsx';
 import { Bouton } from '../ui/Bouton.jsx';
-import { Champ, ChampMotDePasse } from '../ui/Champ.jsx';
+import { Champ, ChampMotDePasse, Selection } from '../ui/Champ.jsx';
 import { Alerte, Badge, Carte, EnTetePage, SqueletteLignes } from '../ui/Elements.jsx';
 import { Modale } from '../ui/Modale.jsx';
 import { useToasts } from '../ui/Toasts.jsx';
@@ -50,6 +51,7 @@ export function PageProfil() {
         <DeuxFacteurs />
         <Sessions profil={profil} />
         <Rappels />
+        <AlertesOffres />
       </div>
     </div>
   );
@@ -81,6 +83,41 @@ function Rappels() {
         />
         Recevoir le rappel à <span className="font-medium">{utilisateur.email}</span>
       </label>
+    </Section>
+  );
+}
+
+// ── Les alertes des marchés potentiels ────────────────────────────
+/** Être prévenu des nouvelles offres pertinentes : dans la cloche, par un résumé quotidien, ou pas du tout. */
+function AlertesOffres() {
+  const { utilisateur, droits } = useSession();
+  const client = useQueryClient();
+  const { notifier } = useToasts();
+  const [choix, setChoix] = useState({ alerteOffres: utilisateur.alerteOffres ?? 'cloche', alerteOffresScore: String(utilisateur.alerteOffresScore ?? 60) });
+  const enregistrer = useMutation({
+    mutationFn: () => api('/api/marches-potentiels/alertes', { methode: 'PATCH', corps: choix }),
+    onSuccess: (r) => {
+      client.setQueryData(CLE_MOI, (ancien) => ({ ...ancien, utilisateur: { ...ancien.utilisateur, ...r } }));
+      notifier({ titre: 'Alertes enregistrées', ton: 'ok' });
+    },
+    onError: (e) => notifier({ titre: 'Réglage non enregistré', message: e.message, ton: 'alerte' }),
+  });
+  if (!droits.can('lire', 'MarchePotentiel')) return null;
+  return (
+    <Section titre="Alertes des marchés potentiels" icone={BellRing} description="Être prévenu quand une nouvelle offre dépasse votre score minimal.">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Selection libelle="Recevoir" value={choix.alerteOffres} onChange={(e) => setChoix((c) => ({ ...c, alerteOffres: e.target.value }))}>
+          {ALERTES_OFFRES.map((a) => (
+            <option key={a.code} value={a.code}>
+              {a.nom}
+            </option>
+          ))}
+        </Selection>
+        <Champ libelle="À partir d’un score de" type="number" min={0} max={100} value={choix.alerteOffresScore} onChange={(e) => setChoix((c) => ({ ...c, alerteOffresScore: e.target.value }))} disabled={choix.alerteOffres === 'aucune'} />
+      </div>
+      <Bouton className="mt-4" taille="petit" chargement={enregistrer.isPending} onClick={() => enregistrer.mutate()}>
+        Enregistrer
+      </Bouton>
     </Section>
   );
 }

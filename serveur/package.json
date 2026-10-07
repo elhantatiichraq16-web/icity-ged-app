@@ -40,6 +40,7 @@
     "imapflow": "^2.0.5",
     "mailparser": "^3.9.28",
     "node-cron": "^4.6.0",
+    "node-html-parser": "^7.1.0",
     "nodemailer": "^10.0.10",
     "otplib": "^13.5.0",
     "pdf-lib": "^1.17.1",

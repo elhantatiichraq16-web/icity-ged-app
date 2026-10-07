@@ -16,11 +16,13 @@ export function activitesVisibles(droits) {
   const cachees = [];
   if (!droits.can('lire', 'Fournisseur')) cachees.push({ fournisseurId: { not: null } });
   if (!droits.can('lire', 'PrixAchat')) cachees.push({ commandeId: { not: null } });
+  if (!droits.can('lire', 'MarchePotentiel')) cachees.push({ offreId: { not: null } });
   return cachees.length ? { NOT: cachees } : {};
 }
 
 /** Peut-on voir cette activité-là ? */
-export const activiteVisible = (droits, a) => (!a.fournisseurId || droits.can('lire', 'Fournisseur')) && (!a.commandeId || droits.can('lire', 'PrixAchat'));
+export const activiteVisible = (droits, a) =>
+  (!a.fournisseurId || droits.can('lire', 'Fournisseur')) && (!a.commandeId || droits.can('lire', 'PrixAchat')) && (!a.offreId || droits.can('lire', 'MarchePotentiel'));
 
 /** Où mène une activité : sa fiche, ou le calendrier à sa date pour un événement libre. */
 export function lienActivite(a) {
@@ -28,6 +30,7 @@ export function lienActivite(a) {
   if (a.clientId) return `/clients/${a.clientId}`;
   if (a.commandeId) return `/achats/commandes/${a.commandeId}`;
   if (a.fournisseurId) return `/achats/fournisseurs/${a.fournisseurId}`;
+  if (a.offreId) return `/marches-potentiels/${a.offreId}`;
   return `/calendrier?date=${a.echeance.toISOString().slice(0, 10)}`;
 }
 

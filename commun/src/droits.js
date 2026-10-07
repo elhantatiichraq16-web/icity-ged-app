@@ -124,6 +124,17 @@ export function droitsPour(utilisateur) {
     can('lire', ['PrixAchat', 'Fournisseur']);
   }
 
+  // ── Marchés potentiels : la veille des appels d'offres ──
+  // Ceux qui répondent aux appels d'offres les lisent, les trient et les
+  // convertissent en affaire ; les chefs de projet les consultent.
+  if (['directeur', 'commercial_ao', 'chef_projet'].includes(role)) can('lire', 'MarchePotentiel');
+  if (['directeur', 'commercial_ao'].includes(role)) {
+    can(['gerer', 'convertir'], 'MarchePotentiel');
+    can('gerer', 'CriteresMarches');
+  }
+  // Les sources touchent à des sites externes : une décision de direction.
+  if (role === 'directeur') can('gerer', 'SourceMarche');
+
   // Garde-fou : quel que soit le rôle (hors administrateur), on ne touche
   // pas à un document qu'on n'a pas le droit de voir.
   cannot(['modifier', 'supprimer', 'controler', 'valider', 'archiver'], 'Document', {

@@ -12,7 +12,8 @@
     "./circuit": "./src/circuit.js",
     "./achats": "./src/achats.js",
     "./activites": "./src/activites.js",
-    "./modeles": "./src/modeles.js"
+    "./modeles": "./src/modeles.js",
+    "./marches-potentiels": "./src/marches-potentiels.js"
   },
   "scripts": {
     "test": "vitest run"

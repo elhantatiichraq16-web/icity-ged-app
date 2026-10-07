@@ -4,9 +4,9 @@
  * `groupe` : le titre sous lequel l'entrée apparaît (les entrées d'un même
  * groupe se suivent).
  * `phase` : la phase de livraison où l'écran sera construit.
- * `droit` : l'entrée n'apparaît que si l'utilisateur a ce droit.
+ * `droit` : l'entrée n'apparaît que si l'utilisateur a ce droit ; `droits` : l'un d'eux suffit.
  */
-import { Archive, Briefcase, Building2, CalendarDays, ChartColumn, ClipboardCheck, FileText, Files, FolderInput, FolderKanban, Inbox, LayoutDashboard, ListChecks, Mail, Package, Settings, ShoppingCart, Trash2, Upload } from 'lucide-react';
+import { Archive, Briefcase, Radar, Building2, CalendarDays, ChartColumn, ClipboardCheck, FileText, Files, FolderInput, FolderKanban, Inbox, LayoutDashboard, ListChecks, Mail, Package, Settings, ShoppingCart, Trash2, Upload } from 'lucide-react';
 
 export const NAVIGATION = [
   { chemin: '/', libelle: 'Tableau de bord', icone: LayoutDashboard, phase: 6, groupe: 'Pilotage' },
@@ -15,6 +15,8 @@ export const NAVIGATION = [
   // Les vues Graphique et Tableau croisé d'Odoo.
   { chemin: '/analyses', libelle: 'Analyses', icone: ChartColumn, phase: 6, groupe: 'Pilotage' },
   { chemin: '/marches', libelle: 'Marchés', icone: FolderKanban, phase: 2, groupe: 'Affaires' },
+  // Les appels d'offres repérés sur les portails, avant qu'ils deviennent des affaires.
+  { chemin: '/marches-potentiels', libelle: 'Marchés potentiels', icone: Radar, phase: 11, droit: ['lire', 'MarchePotentiel'], groupe: 'Affaires' },
   // Le matériel de chaque marché : sa commande, sa livraison, son paiement.
   { chemin: '/achats', libelle: 'Achats', icone: ShoppingCart, phase: 10, droit: ['lire', 'Achat'], groupe: 'Affaires' },
   { chemin: '/clients', libelle: 'Clients', icone: Building2, phase: 2, groupe: 'Affaires' },
@@ -28,7 +30,7 @@ export const NAVIGATION = [
   // direction les range.
   { chemin: '/archives', libelle: 'Archives', icone: Archive, phase: 7, groupe: 'Rangement' },
   { chemin: '/corbeille', libelle: 'Corbeille', icone: Trash2, phase: 7, droit: ['gerer', 'AVerifier'], groupe: 'Rangement' },
-  { chemin: '/parametres', libelle: 'Paramètres', icone: Settings, phase: 1, droit: ['gerer', 'Utilisateur'], groupe: 'Administration' },
+  { chemin: '/parametres', libelle: 'Paramètres', icone: Settings, phase: 1, droits: [['gerer', 'Utilisateur'], ['gerer', 'SourceMarche'], ['gerer', 'CriteresMarches']], groupe: 'Administration' },
 ];
 
 export const ARRIVEES = { chemin: '/arrivees', libelle: 'Arrivées', icone: Inbox, phase: 8 };
@@ -38,7 +40,7 @@ export const ICONES_GROUPES = { Pilotage: LayoutDashboard, Affaires: Briefcase, 
 
 /** Les entrées visibles pour ces droits. */
 export function entreesVisibles(droits) {
-  return NAVIGATION.filter((e) => !e.droit || droits.can(...e.droit));
+  return NAVIGATION.filter((e) => (!e.droit || droits.can(...e.droit)) && (!e.droits || e.droits.some((d) => droits.can(...d))));
 }
 
 /**

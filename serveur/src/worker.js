@@ -7,7 +7,8 @@
  *  - vidage de la corbeille au-delà de 30 jours (§9), chaque nuit ;
  *  - le rappel du matin : les activités de chacun, par mail, à 8 h ;
  *  - les rappels « N jours avant », dans la cloche, chaque heure ;
- *  - l'alerte « dans 10 minutes » d'une réunion à heure fixe, chaque minute.
+ *  - l'alerte « dans 10 minutes » d'une réunion à heure fixe, chaque minute ;
+ *  - la veille des marchés potentiels (sources actives), et son résumé du matin.
  *
  * Un seul processus, une tâche à la fois : ce PC a 3,7 Go de mémoire (§2).
  */
@@ -22,6 +23,8 @@ import { classerLeFonds } from './services/classement-auto.js';
 import { purgerJournal, viderCorbeille } from './services/entretien.js';
 import { resteALire, tesseractDisponible, traiterFile } from './services/ocr.js';
 import { alerterAvantHeure, envoyerRappelsDuJour, notifierRappels } from './services/rappels.js';
+import { envoyerResumesOffres } from './services/veille/offres.js';
+import { synchroniserTout } from './services/veille/synchronisation.js';
 import { lireFacturesApresOcr } from './services/suivi-achats.js';
 
 const journal = console;
@@ -172,6 +175,42 @@ async function alertesAvantHeure() {
   }
 }
 cron.schedule('* * * * *', alertesAvantHeure, { timezone: 'Africa/Casablanca' });
+
+/**
+ * La veille des marchés potentiels : toutes les 10 minutes, on regarde quelles
+ * sources ACTIVES sont dues (chacune a sa fréquence, 60 minutes par défaut,
+ * allongée après des échecs), puis on fait expirer les offres échues.
+ */
+let veilleEnCours = false;
+async function veilleDesMarches() {
+  if (veilleEnCours) return;
+  veilleEnCours = true;
+  try {
+    const { bilans, expirees } = await synchroniserTout({ log: journal });
+    for (const b of bilans) journal.log(`Veille « ${b.source} » : ${b.etat}${b.erreur ? ` — ${b.erreur}` : ` — ${b.nouvelles} nouvelle(s)`}.`);
+    if (expirees) journal.log(`Veille : ${expirees} offre(s) expirée(s).`);
+  } catch (erreur) {
+    journal.error('Veille des marchés en échec :', erreur.message);
+  } finally {
+    veilleEnCours = false;
+  }
+}
+cron.schedule('*/10 * * * *', veilleDesMarches, { timezone: 'Africa/Casablanca' });
+await veilleDesMarches();
+
+/** Le résumé quotidien des nouvelles offres, pour qui l'a choisi : chaque matin à 8 h 15. */
+cron.schedule(
+  '15 8 * * *',
+  async () => {
+    try {
+      const { envoyes } = await envoyerResumesOffres({ log: journal });
+      if (envoyes) journal.log(`Résumés des marchés potentiels : ${envoyes} envoyé(s).`);
+    } catch (erreur) {
+      journal.error('Résumés des marchés potentiels en échec :', erreur.message);
+    }
+  },
+  { timezone: 'Africa/Casablanca' },
+);
 
 await ecouterLesComptes();
 

@@ -167,6 +167,7 @@ export async function verserFichier(source, infos = {}) {
       verseParId: infos.verseParId ?? null,
       cheminOriginal: relatif.replace(/\\/g, '/'),
       nomOrigine,
+      urlProvenance: infos.urlProvenance ?? null,
       sha256,
       taille: BigInt(size),
       pages: estPdf ? await nombreDePages(destination) : 1,

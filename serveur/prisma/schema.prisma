@@ -58,6 +58,11 @@ model Utilisateur {
   // jour, par mail. Désactivable dans le profil ; jamais deux fois le même jour.
   rappelQuotidien      Boolean   @default(true) @map("rappel_quotidien")
   rappelEnvoyeLe       DateTime? @map("rappel_envoye_le") @db.Date
+  /// Les marchés potentiels : « cloche », « mail » (résumé quotidien) ou « aucune ».
+  alerteOffres         String    @default("cloche") @map("alerte_offres") @db.VarChar(10)
+  /// Le score à partir duquel une nouvelle offre déclenche l'alerte.
+  alerteOffresScore    Int       @default(60) @map("alerte_offres_score")
+  resumeOffresEnvoyeLe DateTime? @map("resume_offres_envoye_le") @db.Date
 
   creeLe    DateTime @default(now()) @map("cree_le")
   modifieLe DateTime @updatedAt @map("modifie_le")
@@ -71,6 +76,8 @@ model Utilisateur {
   activitesAssignees Activite[]     @relation("ActivitesAssignees")
   activitesCreees   Activite[]      @relation("ActivitesCreees")
   participations    ParticipantActivite[]
+  offresSuivies     OffrePotentielle[] @relation("OffresSuivies")
+  offresFavorites   FavoriOffre[]
   abonnements       Abonnement[]
   tachesMarches     TacheMarche[]   @relation("TachesMarches")
   notifications     Notification[]  @relation("NotificationsRecues")
@@ -284,6 +291,8 @@ model Marche {
   commandesFournisseur CommandeFournisseur[]
   activites            Activite[]
   taches               TacheMarche[]
+  /// L'offre potentielle dont ce marché est issu, le cas échéant.
+  offreOrigine         OffrePotentielle?
 
   @@index([clientId])
   @@index([phase])
@@ -454,6 +463,8 @@ model Document {
   /// Vignette de la première page, pour les listes.
   cheminVignette  String?       @map("chemin_vignette") @db.VarChar(255)
   nomOrigine      String?       @map("nom_origine") @db.VarChar(255)
+  /// L'adresse officielle d'où vient la pièce (import depuis une annonce publique).
+  urlProvenance   String?       @map("url_provenance") @db.VarChar(1000)
   /// L'empreinte du fichier : deux fois le même octet à l'octet près est
   /// refusé au versement (§6).
   sha256          String?       @unique @db.VarChar(64)
@@ -744,6 +755,8 @@ model Activite {
   fournisseur  Fournisseur? @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
   commandeId   Int?         @map("commande_id")
   commande     CommandeFournisseur? @relation(fields: [commandeId], references: [id], onDelete: Cascade)
+  offreId      Int?         @map("offre_id")
+  offre        OffrePotentielle? @relation(fields: [offreId], references: [id], onDelete: Cascade)
   faiteLe      DateTime?    @map("faite_le")
   compteRendu  String?      @map("compte_rendu") @db.Text
   creeLe       DateTime     @default(now()) @map("cree_le")
@@ -754,6 +767,7 @@ model Activite {
   @@index([clientId])
   @@index([fournisseurId])
   @@index([commandeId])
+  @@index([offreId])
   @@map("activites")
 }
 
@@ -842,4 +856,145 @@ model TacheMarche {
 
   @@index([marcheId])
   @@map("taches_marches")
+}
+
+// ════════════════════════════════════════════════════════════════
+// Marchés potentiels : la veille des appels d'offres publiés ailleurs
+// ════════════════════════════════════════════════════════════════
+
+/// Une source d'offres : un portail, un flux, ou un import manuel. Le
+/// connecteur dit comment la lire ; une source ne se synchronise que si elle
+/// est active (désactivée par défaut, tant que la collecte n'est pas permise).
+model SourceMarches {
+  id                 Int       @id @default(autoincrement())
+  nom                String    @unique @db.VarChar(120)
+  siteWeb            String    @map("site_web") @db.VarChar(255)
+  /// pmmp | rss | api | html | csv | manuel
+  connecteur         String    @db.VarChar(20)
+  /// L'adresse de l'API, du flux ou de la page de recherche.
+  adresse            String?   @db.VarChar(500)
+  frequenceMinutes   Int       @default(60) @map("frequence_minutes")
+  pagesMax           Int       @default(1) @map("pages_max")
+  delaiRequetesMs    Int       @default(3000) @map("delai_requetes_ms")
+  active             Boolean   @default(false)
+  /// HTTP simple : refusé sauf décision explicite de l'administrateur.
+  autoriserHttp      Boolean   @default(false) @map("autoriser_http")
+  /// Filtres et réglages propres au connecteur (mots de la recherche…).
+  parametres         Json?
+  /// En-têtes ou identifiants, chiffrés (AES-256-GCM), jamais renvoyés.
+  secrets            String?   @db.Text
+  derniereSyncLe     DateTime? @map("derniere_sync_le")
+  /// ok | erreur | partielle
+  derniereSyncEtat   String?   @map("derniere_sync_etat") @db.VarChar(20)
+  derniereSyncResume String?   @map("derniere_sync_resume") @db.VarChar(255)
+  derniereErreur     String?   @map("derniere_erreur") @db.Text
+  echecsConsecutifs  Int       @default(0) @map("echecs_consecutifs")
+  creeLe             DateTime  @default(now()) @map("cree_le")
+  modifieLe          DateTime  @updatedAt @map("modifie_le")
+
+  offres           OffrePotentielle[]
+  synchronisations SynchronisationSource[]
+
+  @@map("sources_marches")
+}
+
+/// Le compte rendu d'une synchronisation (ou d'un import) d'une source.
+model SynchronisationSource {
+  id             Int       @id @default(autoincrement())
+  sourceId       Int       @map("source_id")
+  source         SourceMarches @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  /// auto | manuelle | import
+  declenchement  String    @db.VarChar(20)
+  declencheParId Int?      @map("declenche_par")
+  debut          DateTime  @default(now())
+  fin            DateTime?
+  /// en_cours | ok | erreur | partielle
+  etat           String    @default("en_cours") @db.VarChar(20)
+  pagesLues      Int       @default(0) @map("pages_lues")
+  recues         Int       @default(0)
+  nouvelles      Int       @default(0)
+  misesAJour     Int       @default(0) @map("mises_a_jour")
+  erreur         String?   @db.Text
+
+  @@index([sourceId, debut])
+  @@map("synchronisations_sources")
+}
+
+/// Une offre publiée par une source : un appel d'offres auquel iCity
+/// pourrait répondre. Jamais deux fois la même : (source, identifiant externe).
+model OffrePotentielle {
+  id                   Int       @id @default(autoincrement())
+  sourceId             Int       @map("source_id")
+  source               SourceMarches @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  /// L'identifiant donné par la source, ou une empreinte stable quand elle n'en donne pas.
+  idExterne            String    @map("id_externe") @db.VarChar(191)
+  urlOfficielle        String?   @map("url_officielle") @db.VarChar(1000)
+  reference            String?   @db.VarChar(120)
+  objet                String    @db.Text
+  resume               String?   @db.Text
+  acheteur             String?   @db.VarChar(255)
+  categorie            String?   @db.VarChar(120)
+  domaines             Json?
+  procedure            String?   @db.VarChar(160)
+  lieu                 String?   @db.VarChar(255)
+  datePublication      DateTime? @map("date_publication") @db.Date
+  dateLimite           DateTime? @map("date_limite")
+  estimation           Decimal?  @db.Decimal(16, 2)
+  caution              Decimal?  @db.Decimal(16, 2)
+  lots                 Json?
+  reponseElectronique  String?   @map("reponse_electronique") @db.VarChar(120)
+  /// Les documents publics annoncés : [{ nom, url }]. Liens seulement.
+  documents            Json?
+  premiereDetection    DateTime  @default(now()) @map("premiere_detection")
+  derniereVerification DateTime  @default(now()) @map("derniere_verification")
+  disparueLe           DateTime? @map("disparue_le")
+  statutExterne        String?   @map("statut_externe") @db.VarChar(60)
+  /// nouvelle | a_etudier | interessante | a_preparer | ecartee | convertie | expiree | archivee
+  statut               String    @default("nouvelle") @db.VarChar(20)
+  score                Int       @default(0)
+  raisonsScore         Json?     @map("raisons_score")
+  motsCles             Json?     @map("mots_cles")
+  responsableId        Int?      @map("responsable_id")
+  responsable          Utilisateur? @relation("OffresSuivies", fields: [responsableId], references: [id], onDelete: SetNull)
+  notes                String?   @db.Text
+  archiveLe            DateTime? @map("archive_le")
+  marcheId             Int?      @unique @map("marche_id")
+  marche               Marche?   @relation(fields: [marcheId], references: [id], onDelete: SetNull)
+  convertieLe          DateTime? @map("convertie_le")
+  /// L'alerte « nouvelle opportunité » n'est créée qu'une fois.
+  alerteeLe            DateTime? @map("alertee_le")
+  creeLe               DateTime  @default(now()) @map("cree_le")
+  modifieLe            DateTime  @updatedAt @map("modifie_le")
+
+  favoris   FavoriOffre[]
+  activites Activite[]
+
+  @@unique([sourceId, idExterne])
+  @@index([statut])
+  @@index([dateLimite])
+  @@index([score])
+  @@map("offres_potentielles")
+}
+
+/// Les offres qu'un utilisateur garde en favori.
+model FavoriOffre {
+  utilisateurId Int         @map("utilisateur_id")
+  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  offreId       Int         @map("offre_id")
+  offre         OffrePotentielle @relation(fields: [offreId], references: [id], onDelete: Cascade)
+  creeLe        DateTime    @default(now()) @map("cree_le")
+
+  @@id([utilisateurId, offreId])
+  @@map("favoris_offres")
+}
+
+/// Les critères iCity qui calculent le score d'une offre : une seule ligne,
+/// modifiable depuis Paramètres → Critères iCity.
+model CriteresMarches {
+  id           Int      @id @default(1)
+  criteres     Json
+  modifieParId Int?     @map("modifie_par")
+  modifieLe    DateTime @updatedAt @map("modifie_le")
+
+  @@map("criteres_marches")
 }

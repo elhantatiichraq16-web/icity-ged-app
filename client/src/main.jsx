@@ -18,6 +18,7 @@ import { PageCorbeille } from './pages/Corbeille.jsx';
 import { PageArrivees, PageCourriel } from './pages/Courriel.jsx';
 import { PageFicheMarche } from './pages/FicheMarche.jsx';
 import { PageMarches } from './pages/Marches.jsx';
+import { PageFicheOffre, PageMarchesPotentiels } from './pages/MarchesPotentiels.jsx';
 import { PageNouveauMarche } from './pages/NouveauMarche.jsx';
 import { PageParametres } from './pages/Parametres.jsx';
 import { PageProfil } from './pages/Profil.jsx';
@@ -77,9 +78,10 @@ function Public() {
 }
 
 /** Réservé à un droit précis (ex. Paramètres → administrateur). */
-function Exige({ action, sujet }) {
+function Exige({ action, sujet, unDe }) {
   const { droits } = useSession();
-  return droits.can(action, sujet) ? <Outlet /> : <PageIntrouvable />;
+  const permis = unDe ? unDe.some((d) => droits.can(...d)) : droits.can(action, sujet);
+  return permis ? <Outlet /> : <PageIntrouvable />;
 }
 
 function Racine() {
@@ -163,7 +165,15 @@ const routeur = createBrowserRouter([
                 ],
               },
               {
-                element: <Exige action="gerer" sujet="Utilisateur" />,
+                element: <Exige action="lire" sujet="MarchePotentiel" />,
+                children: [
+                  { path: '/marches-potentiels', element: <PageMarchesPotentiels /> },
+                  { path: '/marches-potentiels/:id', element: <PageFicheOffre /> },
+                ],
+              },
+              {
+                // Chaque onglet a son droit : l'administrateur voit tout, la direction ses sources, les commerciaux leurs critères.
+                element: <Exige unDe={[['gerer', 'Utilisateur'], ['gerer', 'SourceMarche'], ['gerer', 'CriteresMarches']]} />,
                 children: [{ path: '/parametres/*', element: <PageParametres /> }],
               },
               { path: '*', element: <PageIntrouvable /> },

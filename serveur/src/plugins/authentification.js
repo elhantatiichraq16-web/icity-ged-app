@@ -40,6 +40,8 @@ export function utilisateurPublic(u) {
     deuxFacteurs: Boolean(u.deuxFacteursActiveLe),
     derniereConnexion: u.derniereConnexion,
     rappelQuotidien: u.rappelQuotidien,
+    alerteOffres: u.alerteOffres,
+    alerteOffresScore: u.alerteOffresScore,
   };
 }
 

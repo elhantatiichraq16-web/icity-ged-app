@@ -13,6 +13,7 @@
 import { z } from 'zod';
 import { ETATS } from '@icity/commun/circuit';
 import { confidentialitesVisibles } from '@icity/commun/droits';
+import { nomStatutOffre } from '@icity/commun/marches-potentiels';
 import { TYPES_ORGANISMES } from '@icity/commun/schemas';
 import { db } from '../db.js';
 import { interdit, introuvable, valider } from '../erreurs.js';
@@ -28,7 +29,7 @@ const ACTIONS_TAIRES = ['document.telecharge'];
 const LIMITE = 200;
 
 /** Les fiches qui ont un fil : leur nom dans l'URL, leur type au journal. */
-const TYPES = { marche: 'Marche', client: 'Client', fournisseur: 'Fournisseur', commande: 'CommandeFournisseur' };
+const TYPES = { marche: 'Marche', client: 'Client', fournisseur: 'Fournisseur', commande: 'CommandeFournisseur', offre: 'OffrePotentielle' };
 
 /** Les noms lisibles des champs, pour dire ce qui a changé. */
 const CHAMPS = {
@@ -69,6 +70,7 @@ const CHAMPS = {
   typeDocumentId: 'Type',
   titre: 'Titre',
   confidentialite: 'Confidentialité',
+  statut: 'Statut',
 };
 
 
@@ -81,6 +83,7 @@ function lisible(champ, valeur, noms) {
   if (champ === 'responsableId') return noms.utilisateurs.get(valeur) ?? `n° ${valeur}`;
   if (champ === 'typeDocumentId') return noms.types.get(valeur) ?? `n° ${valeur}`;
   if (champ === 'typeOrganisme') return TYPES_ORGANISMES.find((t) => t.code === valeur)?.nom ?? valeur;
+  if (champ === 'statut') return nomStatutOffre(valeur);
   if (typeof valeur === 'boolean') return valeur ? 'oui' : 'non';
   if (Array.isArray(valeur)) return valeur.join(', ') || '—';
   if (typeof valeur === 'object') return JSON.stringify(valeur);
@@ -183,14 +186,16 @@ export default async function routesFil(app) {
     // Les fournisseurs (et leurs prix) restent aux achats et à la direction.
     if (type === 'Fournisseur' && !requete.droits.can('lire', 'Fournisseur')) throw interdit();
     if (type === 'CommandeFournisseur' && !requete.droits.can('lire', 'PrixAchat')) throw interdit();
+    if (type === 'OffrePotentielle' && !requete.droits.can('lire', 'MarchePotentiel')) throw interdit();
     const lire = {
       Marche: () => db.marche.findUnique({ where: { id } }),
       Client: () => db.client.findUnique({ where: { id } }),
       Fournisseur: () => db.fournisseur.findUnique({ where: { id } }),
       CommandeFournisseur: () => db.commandeFournisseur.findUnique({ where: { id } }),
+      OffrePotentielle: () => db.offrePotentielle.findUnique({ where: { id } }),
     };
     const existe = type ? await lire[type]() : null;
-    if (!existe) throw introuvable({ Client: 'Client', Fournisseur: 'Fournisseur', CommandeFournisseur: 'Commande' }[type] ?? 'Marché');
+    if (!existe) throw introuvable({ Client: 'Client', Fournisseur: 'Fournisseur', CommandeFournisseur: 'Commande', OffrePotentielle: 'Offre' }[type] ?? 'Marché');
     return { type, id };
   }
 

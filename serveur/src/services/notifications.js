@@ -30,6 +30,15 @@ const FICHES = {
   },
 };
 
+FICHES.OffrePotentielle = {
+  lien: (id) => `/marches-potentiels/${id}`,
+  nom: async (id) => {
+    const o = await db.offrePotentielle.findUnique({ where: { id }, select: { reference: true, objet: true } });
+    return o ? o.reference ?? (o.objet.length > 60 ? `${o.objet.slice(0, 59)}…` : o.objet) : null;
+  },
+  droit: ['lire', 'MarchePotentiel'],
+};
+
 export const TYPES_SUIVIS = Object.keys(FICHES);
 
 /** Ce qui ne prévient personne : les consultations, les connexions, les notes (seules les mentions préviennent). */

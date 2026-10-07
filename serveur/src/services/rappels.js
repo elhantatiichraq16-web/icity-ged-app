@@ -37,7 +37,7 @@ export function texteRappel(nom, activites, aujourdhui, url = config.APP_URL) {
   const jour = activites.filter((a) => iso(a.echeance) === aujourdhui);
   const bientot = activites.filter((a) => iso(a.echeance) > aujourdhui);
   const ligne = (a) => {
-    const fiche = a.marche?.reference ?? a.client?.nom ?? a.fournisseur?.nom ?? (a.commande ? `commande ${a.commande.fournisseur?.nom ?? ''}`.trim() : null);
+    const fiche = a.marche?.reference ?? a.client?.nom ?? a.fournisseur?.nom ?? (a.commande ? `commande ${a.commande.fournisseur?.nom ?? ''}`.trim() : null) ?? a.offre?.reference ?? null;
     const e = iso(a.echeance);
     const quand = e < aujourdhui ? ` — prévue le ${jourFr(e)}` : e > aujourdhui ? ` — le ${jourFr(e)}${a.heure ? ` à ${a.heure}` : ''}` : a.heure ? ` — à ${a.heure}` : '';
     return `  • ${nomTypeActivite(a.type)} : ${a.resume}${fiche ? ` (${fiche})` : ''}${quand}`;
@@ -98,6 +98,7 @@ export async function envoyerRappelsDuJour({ maintenant = new Date(), log = cons
         client: { select: { nom: true } },
         fournisseur: { select: { nom: true } },
         commande: { select: { fournisseur: { select: { nom: true } } } },
+        offre: { select: { reference: true } },
       },
       orderBy: [{ echeance: 'asc' }, { heure: { sort: 'asc', nulls: 'first' } }],
     });

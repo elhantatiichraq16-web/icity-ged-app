@@ -28,6 +28,7 @@ const AVEC = {
   client: { select: { id: true, nom: true } },
   fournisseur: { select: { id: true, nom: true } },
   commande: { select: { id: true, fournisseur: { select: { nom: true } } } },
+  offre: { select: { id: true, reference: true, objet: true } },
   participants: { select: { utilisateur: { select: { id: true, nom: true } } }, orderBy: { utilisateurId: 'asc' } },
 };
 
@@ -55,6 +56,7 @@ function vueActivite(a, aujourdhui = jourCasablanca()) {
     client: a.client,
     fournisseur: a.fournisseur,
     commande: a.commande ? { id: a.commande.id, fournisseur: a.commande.fournisseur?.nom ?? null } : null,
+    offre: a.offre ? { id: a.offre.id, nom: a.offre.reference ?? a.offre.objet.slice(0, 60) } : null,
     faiteLe: a.faiteLe,
     compteRendu: a.compteRendu,
   };
@@ -70,7 +72,9 @@ const ficheDe = (a) =>
         ? { objetType: 'CommandeFournisseur', objetId: a.commandeId }
         : a.fournisseurId
           ? { objetType: 'Fournisseur', objetId: a.fournisseurId }
-          : { objetType: 'Activite', objetId: a.id };
+          : a.offreId
+            ? { objetType: 'OffrePotentielle', objetId: a.offreId }
+            : { objetType: 'Activite', objetId: a.id };
 
 /** Le résumé lisible d'une activité, pour le journal. */
 const libelle = (a) => `${nomTypeActivite(a.type)} : ${a.resume}`;
@@ -130,8 +134,8 @@ export default async function routesActivites(app) {
    * les miennes (`miennes=1`), de la plus urgente à la plus lointaine.
    */
   app.get('/api/activites', async (requete) => {
-    const { marcheId, clientId, fournisseurId, commandeId, miennes } = requete.query;
-    if (!marcheId && !clientId && !fournisseurId && !commandeId && !miennes) throw new ErreurHttp(422, 'Indiquez une fiche, ou « miennes ».');
+    const { marcheId, clientId, fournisseurId, commandeId, offreId, miennes } = requete.query;
+    if (!marcheId && !clientId && !fournisseurId && !commandeId && !offreId && !miennes) throw new ErreurHttp(422, 'Indiquez une fiche, ou « miennes ».');
     const activites = await db.activite.findMany({
       where: {
         faiteLe: null,
@@ -139,6 +143,7 @@ export default async function routesActivites(app) {
         ...(clientId ? { clientId: Number(clientId) || 0 } : {}),
         ...(fournisseurId ? { fournisseurId: Number(fournisseurId) || 0 } : {}),
         ...(commandeId ? { commandeId: Number(commandeId) || 0 } : {}),
+        ...(offreId ? { offreId: Number(offreId) || 0 } : {}),
         ...(miennes ? QUI_ME_CONCERNENT(requete.utilisateur.id) : {}),
         ...activitesVisibles(requete.droits),
       },
@@ -162,17 +167,18 @@ export default async function routesActivites(app) {
     const corps = requete.body ?? {};
     const donnees = valider(schemaActivite, corps);
     const idFiche = z.number().int().positive().nullish();
-    const { marcheId, clientId, fournisseurId, commandeId } = valider(
-      z.object({ marcheId: idFiche, clientId: idFiche, fournisseurId: idFiche, commandeId: idFiche }),
-      { marcheId: corps.marcheId, clientId: corps.clientId, fournisseurId: corps.fournisseurId, commandeId: corps.commandeId },
+    const { marcheId, clientId, fournisseurId, commandeId, offreId } = valider(
+      z.object({ marcheId: idFiche, clientId: idFiche, fournisseurId: idFiche, commandeId: idFiche, offreId: idFiche }),
+      { marcheId: corps.marcheId, clientId: corps.clientId, fournisseurId: corps.fournisseurId, commandeId: corps.commandeId, offreId: corps.offreId },
     );
-    if ([marcheId, clientId, fournisseurId, commandeId].filter(Boolean).length > 1) {
+    if ([marcheId, clientId, fournisseurId, commandeId, offreId].filter(Boolean).length > 1) {
       throw new ErreurHttp(422, 'Une activité se pose sur une seule fiche : un marché, un client, un fournisseur ou une commande.');
     }
     if (marcheId && !(await db.marche.findUnique({ where: { id: marcheId } }))) throw introuvable('Marché');
     if (clientId && !(await db.client.findUnique({ where: { id: clientId } }))) throw introuvable('Client');
     if (fournisseurId && !(await db.fournisseur.findUnique({ where: { id: fournisseurId } }))) throw introuvable('Fournisseur');
     if (commandeId && !(await db.commandeFournisseur.findUnique({ where: { id: commandeId } }))) throw introuvable('Commande');
+    if (offreId && (!requete.droits.can('lire', 'MarchePotentiel') || !(await db.offrePotentielle.findUnique({ where: { id: offreId } })))) throw introuvable('Offre');
     const assigne = await assigneValide(donnees.assigneId);
     const { participantIds, ...champs } = donnees;
     const participants = await participantsValides(participantIds, donnees.assigneId);
@@ -185,6 +191,7 @@ export default async function routesActivites(app) {
         clientId: clientId ?? null,
         fournisseurId: fournisseurId ?? null,
         commandeId: commandeId ?? null,
+        offreId: offreId ?? null,
         creeParId: requete.utilisateur.id,
         participants: { create: participants.map((utilisateurId) => ({ utilisateurId })) },
       },
