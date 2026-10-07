@@ -6,10 +6,11 @@
  *  - la liste des consultations en cours (10 annonces par page) ;
  *  - la page de détail d'une consultation.
  *
- * Il ne contient pas de code de lecture : seulement des RÈGLES (voir
- * ../lecture.js), avec plusieurs règles de secours par champ. Si le portail
- * change, on les corrige dans Paramètres → Sources de marchés, sans toucher au
- * code ; celles-ci restent les règles par défaut.
+ * La lecture suit des RÈGLES (voir ../lecture.js), écrites ici dans le code,
+ * avec plusieurs règles de secours par champ : si le portail renomme un
+ * élément, l'étiquette visible ou la forme d'une date prennent le relais. Si
+ * le portail change vraiment, la source passe « À vérifier » et on corrige
+ * ces règles ici.
  *
  * Limites voulues :
  *  - une seule page de liste par passage : les pages suivantes s'obtiennent en
@@ -26,7 +27,7 @@ const BASE = 'https://www.marchespublics.gov.ma/';
 const D = '#ctl0_CONTENU_PAGE_idEntrepriseConsultationSummary_';
 const DATE = '(\\d{2}\\/\\d{2}\\/\\d{4})';
 
-/** Les règles par défaut du portail (observées en octobre 2026). */
+/** Les règles de lecture du portail (observées en octobre 2026). */
 export const REGLES_PMMP = {
   format: 'html',
   liste: {
@@ -72,8 +73,6 @@ export const REGLES_PMMP = {
   },
 };
 
-/** Les règles d'une source : les siennes si elle en a, sinon celles par défaut. */
-export const reglesDe = (source) => source?.parametres?.regles ?? REGLES_PMMP;
 
 /** Une adresse de consultation du portail ? Rend ses deux clés, ou null. */
 export function clesConsultation(adresse) {
@@ -124,7 +123,7 @@ export const connecteurPmmp = {
 
   /** Les annonces récentes : une page de liste, publique. */
   async lister({ source, recuperer }) {
-    const regles = reglesDe(source);
+    const regles = REGLES_PMMP;
     const { texte } = await recuperer(source.adresse || ADRESSE_LISTE);
     const { offres, qualite } = lireListePmmp(texte, regles);
     const remarques = [];
@@ -133,12 +132,12 @@ export const connecteurPmmp = {
   },
 
   /** Le détail d'une annonce, pour l'actualiser ou l'importer par son adresse. */
-  async detail({ adresse, recuperer, source }) {
+  async detail({ adresse, recuperer }) {
     const cles = clesConsultation(adresse);
     if (!cles) throw new Error('Ce n’est pas l’adresse d’une consultation du portail.');
     const { texte } = await recuperer(adresseDetail(cles));
-    const offre = analyserDetail(texte, adresseDetail(cles), reglesDe(source));
-    if (!offre.objet) throw new Error('Annonce introuvable, ou la page a changé : vérifiez les règles de lecture de la page de détail.');
+    const offre = analyserDetail(texte, adresseDetail(cles));
+    if (!offre.objet) throw new Error('Annonce introuvable, ou la page a changé : les règles de lecture de la page de détail sont à revoir.');
     return offre;
   },
 };

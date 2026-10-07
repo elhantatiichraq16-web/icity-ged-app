@@ -12,16 +12,17 @@
  * Ajouter une source d'un nouveau genre = écrire un fichier ici et l'inscrire
  * dans CONNECTEURS (voir docs/marches-potentiels.md).
  */
-import { connecteurApi, connecteurHtml } from './generique.js';
 import { connecteurPmmp } from './pmmp.js';
 import { connecteurRss } from './rss.js';
 
-/** Les connecteurs qui savent lire seuls. « csv » et « manuel » : import seulement. « html » et « api » suivent les règles de la source. */
+/**
+ * Les connecteurs qui savent lire seuls. « api », « html », « csv », « manuel » :
+ * import seulement. Une nouvelle source automatique = un connecteur ici, avec
+ * ses règles de lecture écrites dans le code (voir pmmp.js et ../lecture.js).
+ */
 export const CONNECTEURS = {
   pmmp: connecteurPmmp,
   rss: connecteurRss,
-  html: connecteurHtml,
-  api: connecteurApi,
 };
 
 export const connecteurDe = (code) => CONNECTEURS[code] ?? null;

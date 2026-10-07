@@ -7,7 +7,7 @@
  *  - chaque passage laisse un compte rendu (synchronisations_sources) ;
  *  - une lecture qui se dégrade (aucune annonce, objets ou dates introuvables)
  *    met la source « à vérifier » et prévient ceux qui gèrent les sources, le
- *    jour même : on corrige alors ses règles de lecture dans l'écran.
+ *    jour même : il faut alors revoir les règles de lecture du connecteur.
  */
 import { droitsPour } from '@icity/commun/droits';
 import { dechiffrer } from '../../securite/crypto.js';

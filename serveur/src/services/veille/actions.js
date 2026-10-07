@@ -53,7 +53,7 @@ export async function apercuAdresse(adresse) {
   verifierUrl(adresse);
   const { source, connecteur } = await sourcePourAdresse(adresse);
   if (!connecteur?.detail) return { reconnue: false, offre: { urlOfficielle: adresse } };
-  const brute = await connecteur.detail({ adresse, recuperer: recupererPour(source), source });
+  const brute = await connecteur.detail({ adresse, recuperer: recupererPour(source) });
   return { reconnue: true, offre: brute };
 }
 
@@ -76,7 +76,7 @@ export async function actualiserOffre(offre, { maintenant = new Date() } = {}) {
   const source = await db.sourceMarches.findUnique({ where: { id: offre.sourceId } });
   const connecteur = connecteurDe(source.connecteur)?.detail ? connecteurDe(source.connecteur) : connecteurPourAdresse(offre.urlOfficielle ?? '');
   if (!connecteur?.detail || !offre.urlOfficielle) throw new Error('Cette offre ne peut pas être relue automatiquement : ouvrez l’annonce officielle.');
-  const brute = await connecteur.detail({ adresse: offre.urlOfficielle, recuperer: recupererPour(source), source });
+  const brute = await connecteur.detail({ adresse: offre.urlOfficielle, recuperer: recupererPour(source) });
   await enregistrerOffres(source, [{ ...brute, idExterne: offre.idExterne }], { maintenant });
   return db.offrePotentielle.findUnique({ where: { id: offre.id } });
 }

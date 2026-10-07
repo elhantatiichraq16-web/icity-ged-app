@@ -8,7 +8,6 @@
  * lire / gerer / convertir « MarchePotentiel », gerer « SourceMarche » et
  * « CriteresMarches ».
  */
-import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { STATUTS_AFFAIRE } from '@icity/commun/marches';
 import {
@@ -27,10 +26,6 @@ import { chiffrer } from '../securite/crypto.js';
 import { journaliser } from '../services/journal.js';
 import { abonner } from '../services/notifications.js';
 import { actualiserOffre, apercuAdresse, creerOffreManuelle, importerCsv, importerDocument } from '../services/veille/actions.js';
-import { MODELES_REGLES } from '../services/veille/connecteurs/generique.js';
-import { REGLES_PMMP } from '../services/veille/connecteurs/pmmp.js';
-import { diagnostic, verifierRegles } from '../services/veille/lecture.js';
-import { normaliserOffre } from '../services/veille/normalisation.js';
 import { connecteurDe } from '../services/veille/connecteurs/index.js';
 import { assurerInitialisation, chargerCriteres, recalculerScores } from '../services/veille/offres.js';
 import { recupererPour, synchroniserSource, synchroniserTout } from '../services/veille/synchronisation.js';
@@ -158,14 +153,6 @@ function secretsChiffres(texte) {
   }
   if (!valeur || typeof valeur !== 'object' || Array.isArray(valeur)) throw new ErreurHttp(422, 'Certains champs sont à corriger.', { erreurs: { secrets: 'Un objet JSON d’en-têtes.' } });
   return chiffrer(JSON.stringify(valeur));
-}
-
-/** Des règles de lecture invalides ne s'enregistrent pas : on dit pourquoi, règle par règle. */
-function verifierParametres(donnees) {
-  const regles = donnees.parametres?.regles;
-  if (!regles) return;
-  const problemes = verifierRegles(regles);
-  if (problemes.length) throw new ErreurHttp(422, 'Certaines règles de lecture sont à corriger.', { erreurs: { regles: problemes.slice(0, 8).join(' ') } });
 }
 
 /** Les adresses d'une source doivent passer la vérification avant d'être enregistrées. */
@@ -451,7 +438,6 @@ export default async function routesMarchesPotentiels(app) {
   app.post('/api/sources-marches', gererSources, async (requete, reponse) => {
     const donnees = valider(schemaSource, requete.body ?? {});
     verifierAdressesSource(donnees);
-    verifierParametres(donnees);
     if (await db.sourceMarches.findUnique({ where: { nom: donnees.nom } })) throw new ErreurHttp(422, 'Certains champs sont à corriger.', { erreurs: { nom: 'Une source porte déjà ce nom.' } });
     const cree = await db.sourceMarches.create({ data: { ...donnees, parametres: donnees.parametres ?? undefined, secrets: donnees.secrets ? secretsChiffres(donnees.secrets) : null } });
     await journaliser({ utilisateurId: requete.utilisateur.id, action: 'source.creee', objetType: 'SourceMarches', objetId: cree.id, apres: { nom: cree.nom, connecteur: cree.connecteur, active: cree.active, adresse: cree.adresse }, ip: requete.ip }, requete.log);
@@ -464,13 +450,11 @@ export default async function routesMarchesPotentiels(app) {
     const { effacerSecrets, ...corps } = requete.body ?? {};
     const donnees = valider(schemaSource, corps);
     verifierAdressesSource(donnees);
-    verifierParametres(donnees);
     const autre = await db.sourceMarches.findUnique({ where: { nom: donnees.nom } });
     if (autre && autre.id !== avant.id) throw new ErreurHttp(422, 'Certains champs sont à corriger.', { erreurs: { nom: 'Une source porte déjà ce nom.' } });
     // Un secret vide garde l'ancien ; « effacer » le retire.
     const secrets = effacerSecrets ? null : donnees.secrets ? secretsChiffres(donnees.secrets) : avant.secrets;
-    // Des paramètres vides effacent les règles personnalisées (retour aux règles par défaut).
-    const apres = await db.sourceMarches.update({ where: { id: avant.id }, data: { ...donnees, parametres: donnees.parametres ?? Prisma.DbNull, secrets, ...(donnees.active && !avant.active ? { echecsConsecutifs: 0 } : {}) } });
+    const apres = await db.sourceMarches.update({ where: { id: avant.id }, data: { ...donnees, parametres: donnees.parametres ?? undefined, secrets, ...(donnees.active && !avant.active ? { echecsConsecutifs: 0 } : {}) } });
     const trace = (s) => ({ nom: s.nom, connecteur: s.connecteur, adresse: s.adresse, active: s.active, frequenceMinutes: s.frequenceMinutes, pagesMax: s.pagesMax, delaiRequetesMs: s.delaiRequetesMs, autoriserHttp: s.autoriserHttp, secrets: s.secrets ? 'défini' : 'aucun' });
     await journaliser({ utilisateurId: requete.utilisateur.id, action: 'source.modifiee', objetType: 'SourceMarches', objetId: avant.id, avant: trace(avant), apres: trace(apres), ip: requete.ip }, requete.log);
     return vueSource(apres);
@@ -485,39 +469,6 @@ export default async function routesMarchesPotentiels(app) {
     await db.$transaction([db.offrePotentielle.deleteMany({ where: { sourceId: source.id } }), db.sourceMarches.delete({ where: { id: source.id } })]);
     await journaliser({ utilisateurId: requete.utilisateur.id, action: 'source.supprimee', objetType: 'SourceMarches', objetId: source.id, avant: { nom: source.nom, connecteur: source.connecteur, offres }, ip: requete.ip }, requete.log);
     return { ok: true, offresSupprimees: offres };
-  });
-
-  /** Les règles de lecture proposées, par type de connecteur (pour commencer, ou pour revenir en arrière). */
-  app.get('/api/sources-marches/regles-par-defaut', gererSources, async () => ({ pmmp: REGLES_PMMP, html: MODELES_REGLES.html, api: MODELES_REGLES.api }));
-
-  /**
-   * Essayer des règles de lecture sur la vraie page, SANS rien enregistrer :
-   * combien d'annonces, quels champs trouvés, quelles règles de secours, et
-   * les premières offres lues. C'est ce qui permet de corriger une règle dans
-   * l'écran quand un site change.
-   */
-  app.post('/api/sources-marches/essai', { ...gererSources, config: limiteCollecte }, async (requete) => {
-    const corps = requete.body ?? {};
-    const donnees = valider(z.object({ sourceId: z.number().int().positive().optional(), connecteur: z.enum(['pmmp', 'rss', 'html', 'api']), adresse: z.string().trim().max(500).optional(), autoriserHttp: z.boolean().default(false), regles: z.record(z.string(), z.unknown()).nullish() }), corps);
-    if (donnees.regles) {
-      const problemes = verifierRegles(donnees.regles);
-      if (problemes.length) return { ok: false, message: problemes.slice(0, 8).join(' ') };
-    }
-    const existante = donnees.sourceId ? await db.sourceMarches.findUnique({ where: { id: donnees.sourceId } }) : null;
-    const source = { id: 0, nom: 'essai', connecteur: donnees.connecteur, adresse: donnees.adresse || existante?.adresse || null, autoriserHttp: donnees.autoriserHttp, pagesMax: 1, delaiRequetesMs: 1000, secrets: existante?.secrets ?? null, parametres: donnees.regles ? { regles: donnees.regles } : null };
-    try {
-      if (source.adresse) verifierUrl(source.adresse, { autoriserHttp: source.autoriserHttp });
-      const { offres, qualite, regles } = await connecteurDe(source.connecteur).lister({ source, recuperer: recupererPour(source) });
-      const lues = offres.map(normaliserOffre).filter(Boolean);
-      return {
-        ok: true,
-        qualite,
-        probleme: diagnostic(qualite, regles),
-        apercu: lues.slice(0, 5).map((o) => ({ idExterne: o.idExterne, reference: o.reference, objet: o.objet, acheteur: o.acheteur, lieu: o.lieu, datePublication: o.datePublication, dateLimite: o.dateLimite, urlOfficielle: o.urlOfficielle })),
-      };
-    } catch (e) {
-      return { ok: false, message: e.message };
-    }
   });
 
   /** Tester la connexion : une seule requête, sans rien enregistrer. */

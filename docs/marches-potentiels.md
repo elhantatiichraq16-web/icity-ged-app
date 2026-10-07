@@ -77,23 +77,22 @@ Une ligne sans objet est refusée et signalée ; une ligne déjà connue met l'o
 
 ## Quand un site change : les règles de lecture
 
-Les connecteurs `pmmp`, `html` et `api` ne contiennent **pas de code propre à un site** : ils
-appliquent des **règles de lecture**, modifiables dans **Paramètres → Sources de marchés → Modifier
-→ Règles de lecture** (moteur : `serveur/src/services/veille/lecture.js`).
+La lecture d'une page ne dépend pas de code écrit au cas par cas : le connecteur décrit des
+**règles de lecture**, écrites **dans son fichier** (`REGLES_PMMP` dans
+`serveur/src/services/veille/connecteurs/pmmp.js`), et le moteur
+`serveur/src/services/veille/lecture.js` les applique. Elles ne s'affichent pas dans l'application.
 
-- Pour chaque information, **plusieurs règles, une par ligne**, essayées dans l'ordre : si le site
-  renomme un élément, l'étiquette visible (« Objet : ») ou la forme d'une date prennent le relais.
-- **Essayer ces règles sur la page** lit la vraie page sans rien enregistrer : nombre d'annonces,
-  champs trouvés, règles de secours utilisées, premières offres lues.
-- **Rétablir les règles par défaut** revient aux règles livrées (`REGLES_PMMP` dans `pmmp.js`).
-- Une règle mal écrite est refusée à l'enregistrement, avec la raison.
+- Pour chaque information, **plusieurs règles, essayées dans l'ordre** : si le site renomme un
+  élément, l'étiquette visible (« Objet : ») ou la forme d'une date prennent le relais.
+- Si le site change vraiment, on corrige la règle concernée dans `pmmp.js`, sans réécrire la logique
+  de lecture, puis on ajoute un test (fichier d'exemple anonymisé dans `serveur/tests/fixtures/veille/`).
 
 | Règle | Lit |
 |---|---|
 | `css:SÉLECTEUR` / `css:SÉLECTEUR@attribut` | le texte ou un attribut d'un élément |
 | `etiquette:LIBELLÉ` | le texte qui suit « LIBELLÉ : » |
 | `regex:MOTIF` / `texte:MOTIF` | un motif dans le HTML / dans le texte sans balises |
-| `json:chemin.du.champ` | un champ d'une annonce JSON (API) |
+| `json:chemin.du.champ` | un champ d'une annonce JSON (pour un futur connecteur d'API) |
 | `modele:… {champ} …` | un texte composé d'autres champs (ex. `pmmp-{_org}-{_ref}`) |
 | `fixe:valeur` | une valeur fixe |
 | `documents:MOTIF` | les liens dont l'adresse correspond |
@@ -103,10 +102,12 @@ Un champ dont le nom commence par `_` est une aide (utilisée par un modèle).
 
 **Alerte « À vérifier »** : si une synchronisation ne trouve aucune annonce, ou si plus de la moitié
 n'ont pas d'objet ou de date limite, la source passe « À vérifier » et ceux qui gèrent les sources
-sont prévenus dans leur cloche, une seule fois (et de nouveau après 3 échecs d'affilée).
+sont prévenus dans leur cloche, une seule fois (et de nouveau après 3 échecs d'affilée) : il faut
+alors revoir les règles du connecteur.
 
-**Une API officielle** se branche sans code : type « API (JSON) », son adresse, le chemin du tableau
-des annonces et des règles `json:…`.
+**Si le portail publie une API** : écrire un connecteur (voir ci-dessous) dont les règles utilisent
+`json:…` ; le moteur de lecture, le score, les doublons et les alertes restent les mêmes. Garder
+l'identifiant `pmmp-{org}-{ref}` pour ne pas doubler les offres déjà importées.
 
 ## Écrire un nouveau connecteur
 
@@ -125,8 +126,6 @@ des annonces et des règles `json:…`.
      reconnait: (adresse) => false,
    };
    ```
-Seulement si les règles de lecture ne suffisent pas (formulaire à rejouer, format particulier…).
-
 2. L'inscrire dans `CONNECTEURS` (`connecteurs/index.js`) et dans la liste `CONNECTEURS` de
    `commun/src/marches-potentiels.js` (libellé de l'écran).
 3. Enregistrer une réponse **anonymisée** dans `serveur/tests/fixtures/veille/` et ajouter un test

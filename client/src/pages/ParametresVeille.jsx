@@ -17,23 +17,11 @@ import { Alerte, Badge, Carte, SqueletteLignes } from '../ui/Elements.jsx';
 import { Confirmation, Modale } from '../ui/Modale.jsx';
 import { cx } from '../ui/cx.js';
 import { useToasts } from '../ui/Toasts.jsx';
-import { ReglesLecture } from './ReglesLecture.jsx';
 
 const CLE_SOURCES = ['sources-marches'];
 const nomConnecteur = (code) => CONNECTEURS.find((c) => c.code === code)?.nom ?? code;
 const TONS_ETAT = { ok: 'ok', partielle: 'attente', a_verifier: 'alerte', erreur: 'alerte' };
 const NOMS_ETAT = { ok: 'Réussie', partielle: 'Partielle', a_verifier: 'À vérifier', erreur: 'En erreur', en_cours: 'En cours' };
-
-/** Les règles sans lignes vides (ce qu'on a tapé, avant d'enregistrer). */
-const sansLignesVides = (regles) =>
-  regles && {
-    ...regles,
-    ...Object.fromEntries(
-      ['liste', 'detail']
-        .filter((p) => regles[p])
-        .map((p) => [p, { ...regles[p], champs: Object.fromEntries(Object.entries(regles[p].champs ?? {}).map(([c, l]) => [c, l.map((x) => x.trim()).filter(Boolean)]).filter(([, l]) => l.length)) }]),
-    ),
-  };
 
 // ════════════════════════════ Les sources ════════════════════════════
 
@@ -107,7 +95,6 @@ function CarteSource({ s, modifier }) {
             <h3 className="font-semibold">{s.nom}</h3>
             <Badge ton={s.active ? 'ok' : 'neutre'}>{s.active ? 'Active' : 'Désactivée'}</Badge>
             {s.derniereSyncEtat && <Badge ton={TONS_ETAT[s.derniereSyncEtat] ?? 'neutre'}>{s.derniereSyncEtat === 'ok' ? 'Dernière synchro réussie' : NOMS_ETAT[s.derniereSyncEtat] ?? s.derniereSyncEtat}</Badge>}
-            {s.parametres?.regles && <Badge ton="cyan">Règles personnalisées</Badge>}
           </div>
           <p className="mt-1 text-[13px] text-encre-3">
             {nomConnecteur(s.connecteur)} · {s.nbOffres} offre(s)
@@ -212,21 +199,14 @@ function ModaleSource({ source, surFermer }) {
     effacerSecrets: false,
   }));
   const [erreurs, setErreurs] = useState({});
-  // null = les règles par défaut du portail ; sinon celles de la source.
-  const [regles, setRegles] = useState(() => source?.parametres?.regles ?? null);
   const file = useQueryClient();
   const { notifier } = useToasts();
   const champ = (cle) => ({ value: v[cle], erreur: erreurs[cle], onChange: (e) => setV((x) => ({ ...x, [cle]: e.target.type === 'checkbox' ? e.target.checked : e.target.value })) });
-  const parametres = () => {
-    const { regles: _anciennes, ...autres } = source?.parametres ?? {};
-    const propres = sansLignesVides(regles);
-    return propres ? { ...autres, regles: propres } : Object.keys(autres).length ? autres : null;
-  };
   const enregistrer = useMutation({
     mutationFn: () =>
       api(source ? `/api/sources-marches/${source.id}` : '/api/sources-marches', {
         methode: source ? 'PATCH' : 'POST',
-        corps: { ...v, frequenceMinutes: Number(v.frequenceMinutes), pagesMax: Number(v.pagesMax), delaiRequetesMs: Number(v.delaiRequetesMs), parametres: parametres() },
+        corps: { ...v, frequenceMinutes: Number(v.frequenceMinutes), pagesMax: Number(v.pagesMax), delaiRequetesMs: Number(v.delaiRequetesMs), parametres: source?.parametres ?? null },
       }),
     onSuccess: () => {
       file.invalidateQueries({ queryKey: CLE_SOURCES });
@@ -288,18 +268,6 @@ function ModaleSource({ source, surFermer }) {
           <Alerte ton="attente" className="sm:col-span-2">
             Les conditions d’utilisation du portail ne disent rien de la collecte automatique. Activez cette source seulement après l’accord écrit de l’éditeur du portail.
           </Alerte>
-        )}
-        {['pmmp', 'html', 'api'].includes(v.connecteur) && (
-          <details className="rounded-lg border border-trait p-3 sm:col-span-2" open={Boolean(erreurs.regles)}>
-            <summary className="cursor-pointer font-semibold">Règles de lecture</summary>
-            <p className="mt-1 mb-3 text-[13px] text-encre-3">Si le site change sa page, corrigez ici la règle qui ne trouve plus l’information : pas de code à modifier.</p>
-            {erreurs.regles && (
-              <Alerte ton="alerte" className="mb-3">
-                {erreurs.regles}
-              </Alerte>
-            )}
-            <ReglesLecture source={source} connecteur={v.connecteur} adresse={v.adresse} autoriserHttp={v.autoriserHttp} regles={regles} surChangement={setRegles} />
-          </details>
         )}
       </div>
     </Modale>

@@ -1,9 +1,8 @@
 /**
- * Le moteur de lecture des sources : des RÈGLES, pas du code.
- *
- * Une source dit, dans ses réglages (Paramètres → Sources de marchés), comment
- * trouver chaque information. Si le site change, on corrige une règle dans
- * l'écran : pas de code à modifier, pas de redémarrage.
+ * Le moteur de lecture des sources : chaque connecteur décrit par des RÈGLES,
+ * écrites dans son fichier (voir connecteurs/pmmp.js), comment trouver chaque
+ * information. Si le site change, on corrige une règle, sans réécrire la
+ * logique de lecture.
  *
  *   {
  *     format: 'html' | 'json',
@@ -34,9 +33,8 @@
  * « | garder:MOTIF » ne garde que le premier groupe.
  * Un champ dont le nom commence par « _ » est une aide (pour un modèle), pas une information.
  *
- * Sécurité : les règles ne viennent que de la direction ou de l'administrateur ;
- * les motifs sont limités en longueur et ne s'appliquent qu'à des morceaux de
- * page de taille bornée. Rien n'est jamais exécuté.
+ * Sécurité : les motifs sont limités en longueur et ne s'appliquent qu'à des
+ * morceaux de page de taille bornée. Rien n'est jamais exécuté.
  */
 import { parse } from 'node-html-parser';
 

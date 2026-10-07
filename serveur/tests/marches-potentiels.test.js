@@ -291,7 +291,7 @@ describe('import CSV', () => {
   });
 });
 
-describe('règles de lecture (sans modifier le code)', () => {
+describe('règles de lecture du connecteur', () => {
   const { lireListe, verifierRegles, lireRegle, diagnostic } = lecture;
 
   it('chaque sorte de règle, et la règle de secours quand la première échoue', () => {
@@ -335,7 +335,7 @@ describe('règles de lecture (sans modifier le code)', () => {
     expect(diagnostic(qualite, REGLES_PMMP)).toBeNull();
   });
 
-  it('une page devenue illisible : source « à vérifier », la direction prévenue une seule fois, puis corrigée dans les règles', async () => {
+  it('une page devenue illisible : source « à vérifier », la direction prévenue une seule fois', async () => {
     const directeur = await creerUtilisateur('directeur');
     await creerUtilisateur('commercial_ao');
     await db.sourceMarches.update({ where: { id: pmmp.id }, data: { active: true } });
@@ -347,36 +347,12 @@ describe('règles de lecture (sans modifier le code)', () => {
     const alertes = await db.notification.findMany({ where: { lien: '/parametres/sources' } });
     expect(alertes.map((n) => n.utilisateurId)).toEqual([directeur.id]); // une seule fois, et seulement à qui gère les sources
 
-    // On corrige le repère dans l'écran (les réglages de la source), sans code.
+    // Corrigé dans les règles du connecteur, la page se relit en entier.
     const regles = structuredClone(REGLES_PMMP);
     regles.liste.decoupage.repere = '_numeroConsultation"';
     regles.liste.champs._ref = ['css:input[id$="_numeroConsultation"]@value'];
-    await db.sourceMarches.update({ where: { id: pmmp.id }, data: { parametres: { regles } } });
-    expect((await passer(casse)).bilans[0]).toMatchObject({ etat: 'ok', nouvelles: 3 });
-  });
-
-  it('une API JSON se branche par des règles, sans code', async () => {
-    const champs = { idExterne: ['json:id'], urlOfficielle: ['json:url'], reference: ['json:reference'], objet: ['json:intitule'], acheteur: ['json:acheteur.nom'], categorie: ['json:categorie'], lieu: ['json:lieu'], datePublication: ['json:date_publication'], dateLimite: ['json:date_limite'], estimation: ['json:estimation'] };
-    const api = await db.sourceMarches.create({
-      data: { nom: 'API d’exemple', siteWeb: 'https://api.exemple.ma', connecteur: 'api', adresse: 'https://api.exemple.ma/avis', active: true, parametres: { regles: { format: 'json', liste: { decoupage: { chemin: 'data' }, champs } } } },
-    });
-    const { bilans } = await synchroniserTout({ maintenant: MAINTENANT, recuperer: fauxRecuperer({ 'https://api.exemple.ma/avis': fixture('api.json') }) });
-    expect(bilans).toMatchObject([{ source: 'API d’exemple', etat: 'ok', nouvelles: 2 }]);
-    const iot = await db.offrePotentielle.findFirstOrThrow({ where: { sourceId: api.id, idExterne: 'A-2026-101' } });
-    expect(iot).toMatchObject({ acheteur: "Commune d'Exemple", lieu: 'Oujda' });
-    expect(Number(iot.estimation)).toBe(950000);
-    expect(iot.score).toBeGreaterThanOrEqual(25); // « IoT »
-  });
-
-  it('l’écran ne peut pas enregistrer des règles invalides ; l’essai et les règles par défaut restent à la direction', async () => {
-    const directeur = en(app, await connecter(app, (await creerUtilisateur('directeur')).email));
-    const commercial = en(app, await connecter(app, (await creerUtilisateur('commercial_ao')).email));
-    const corps = { nom: pmmp.nom, siteWeb: pmmp.siteWeb, connecteur: 'pmmp', adresse: pmmp.adresse, parametres: { regles: { format: 'html', liste: { decoupage: { repere: 'x' }, champs: { objet: ['regex:(('] } } } } };
-    const refus = await directeur('PATCH', `/api/sources-marches/${pmmp.id}`, corps);
-    expect(refus.statusCode).toBe(422);
-    expect(refus.json().erreurs.regles).toMatch(/Motif invalide/);
-    expect((await directeur('GET', '/api/sources-marches/regles-par-defaut')).json().pmmp.liste.decoupage.repere).toBe('_refCons"');
-    expect((await directeur('POST', '/api/sources-marches/essai', { connecteur: 'html', adresse: 'https://avis.exemple.ma', regles: { format: 'html', liste: { decoupage: {}, champs: {} } } })).json()).toMatchObject({ ok: false, message: expect.stringMatching(/repère ou un sélecteur/) });
-    expect((await commercial('POST', '/api/sources-marches/essai', { connecteur: 'pmmp' })).statusCode).toBe(403);
+    expect(lireListePmmp(casse, regles).qualite).toMatchObject({ blocs: 3, offres: 3 });
+    // Et la page redevenue normale remet la source « réussie ».
+    expect((await passer(LISTE)).bilans[0]).toMatchObject({ etat: 'ok', nouvelles: 3 });
   });
 });
