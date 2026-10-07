@@ -4,11 +4,16 @@
  *  - une source après l'autre, et une erreur n'arrête jamais les suivantes ;
  *  - chaque source a sa fréquence, son nombre de pages, son délai entre deux
  *    requêtes ; après des échecs répétés, on espace les tentatives (×2, ×4…) ;
- *  - chaque passage laisse un compte rendu (synchronisations_sources).
+ *  - chaque passage laisse un compte rendu (synchronisations_sources) ;
+ *  - une lecture qui se dégrade (aucune annonce, objets ou dates introuvables)
+ *    met la source « à vérifier » et prévient ceux qui gèrent les sources, le
+ *    jour même : on corrige alors ses règles de lecture dans l'écran.
  */
+import { droitsPour } from '@icity/commun/droits';
 import { dechiffrer } from '../../securite/crypto.js';
 import { db } from '../../db.js';
 import { connecteurDe } from './connecteurs/index.js';
+import { diagnostic } from './lecture.js';
 import { alerterNouvellesOffres, assurerInitialisation, enregistrerOffres, expirerOffres } from './offres.js';
 import { ErreurRecuperation, pause, recuperer as recupererBrut } from './recuperation.js';
 
@@ -36,6 +41,18 @@ export function recupererPour(source, { attente = pause } = {}) {
   };
 }
 
+/** États qui demandent une intervention : on ne prévient qu'à l'entrée dans l'un d'eux. */
+const ETATS_A_TRAITER = ['a_verifier', 'erreur'];
+
+/** Prévient ceux qui gèrent les sources qu'une source demande une intervention. */
+async function prevenirGestionnaires(source, message) {
+  const comptes = await db.utilisateur.findMany({ where: { actif: true, motDePasse: { not: null } }, include: { role: true } });
+  const gestionnaires = comptes.filter((u) => droitsPour({ id: u.id, role: u.role.code }).can('gerer', 'SourceMarche'));
+  if (!gestionnaires.length) return;
+  const texte = `Source « ${source.nom} » à vérifier : ${message}`.slice(0, 255);
+  await db.notification.createMany({ data: gestionnaires.map((u) => ({ utilisateurId: u.id, genre: 'suivi', texte, lien: '/parametres/sources' })) });
+}
+
 /** Un message d'erreur montrable : jamais de pile, jamais de secret. */
 const messageDe = (e) => (e instanceof ErreurRecuperation || e?.message ? String(e.message).slice(0, 500) : 'Erreur inconnue.');
 
@@ -50,18 +67,27 @@ export async function synchroniserSource(source, { declenchement = 'auto', utili
   const sync = await db.synchronisationSource.create({ data: { sourceId: source.id, declenchement, declencheParId: utilisateurId, debut: maintenant } });
   try {
     if (!connecteur) throw new Error('Cette source n’a pas de connecteur automatique : importez ses offres par CSV ou par adresse.');
-    const { offres, pagesLues, total, remarques = [] } = await connecteur.lister({ source, recuperer: recuperer ?? recupererPour(source) });
+    const { offres, pagesLues, total, remarques = [], qualite, regles } = await connecteur.lister({ source, recuperer: recuperer ?? recupererPour(source) });
     const { nouvelles, misesAJour } = await enregistrerOffres(source, offres, { maintenant });
     await alerterNouvellesOffres(nouvelles, { maintenant });
-    const resume = [`${offres.length} reçue(s), ${nouvelles.length} nouvelle(s), ${misesAJour} mise(s) à jour`, total ? `${total} annonces sur le portail` : null, ...remarques].filter(Boolean).join(' · ').slice(0, 255);
-    const etat = remarques.length ? 'partielle' : 'ok';
-    await db.synchronisationSource.update({ where: { id: sync.id }, data: { fin: new Date(), etat, pagesLues, recues: offres.length, nouvelles: nouvelles.length, misesAJour } });
-    await db.sourceMarches.update({ where: { id: source.id }, data: { derniereSyncLe: maintenant, derniereSyncEtat: etat, derniereSyncResume: resume, derniereErreur: null, echecsConsecutifs: 0 } });
-    return { etat, nouvelles: nouvelles.length, misesAJour, recues: offres.length, resume };
+    const probleme = diagnostic(qualite, regles);
+    const secours = Object.keys(qualite?.secours ?? {});
+    const resume = [`${offres.length} reçue(s), ${nouvelles.length} nouvelle(s), ${misesAJour} mise(s) à jour`, total ? `${total} annonces sur le portail` : null, secours.length ? `règles de secours utilisées pour : ${secours.join(', ')}` : null, ...remarques]
+      .filter(Boolean)
+      .join(' · ')
+      .slice(0, 255);
+    // Une règle de secours qui marche n'est pas un échec : on le dit dans le compte rendu, sans alarmer.
+    const etat = probleme ? 'a_verifier' : remarques.length ? 'partielle' : 'ok';
+    await db.synchronisationSource.update({ where: { id: sync.id }, data: { fin: new Date(), etat, pagesLues, recues: offres.length, nouvelles: nouvelles.length, misesAJour, erreur: probleme } });
+    await db.sourceMarches.update({ where: { id: source.id }, data: { derniereSyncLe: maintenant, derniereSyncEtat: etat, derniereSyncResume: resume, derniereErreur: probleme, echecsConsecutifs: 0 } });
+    if (probleme && !ETATS_A_TRAITER.includes(source.derniereSyncEtat)) await prevenirGestionnaires(source, probleme);
+    return { etat, nouvelles: nouvelles.length, misesAJour, recues: offres.length, resume, probleme, qualite };
   } catch (erreur) {
     const message = messageDe(erreur);
     await db.synchronisationSource.update({ where: { id: sync.id }, data: { fin: new Date(), etat: 'erreur', erreur: message } });
-    await db.sourceMarches.update({ where: { id: source.id }, data: { derniereSyncLe: maintenant, derniereSyncEtat: 'erreur', derniereSyncResume: 'Échec de la synchronisation', derniereErreur: message, echecsConsecutifs: { increment: 1 } } });
+    const apres = await db.sourceMarches.update({ where: { id: source.id }, data: { derniereSyncLe: maintenant, derniereSyncEtat: 'erreur', derniereSyncResume: 'Échec de la synchronisation', derniereErreur: message, echecsConsecutifs: { increment: 1 } } });
+    // Un échec isolé (site lent) arrive ; au troisième d'affilée, on prévient.
+    if (apres.echecsConsecutifs === 3) await prevenirGestionnaires(source, `3 échecs d’affilée — ${message}`);
     return { etat: 'erreur', erreur: message };
   }
 }

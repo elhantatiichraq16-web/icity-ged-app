@@ -3,32 +3,77 @@
  *
  * Le portail n'offre ni API, ni flux RSS, ni jeu de données ouvert (vérifié le
  * 6 octobre 2026). Ce connecteur lit donc deux pages PUBLIQUES, sans compte :
- *  - la liste des consultations en cours (100 annonces par page) ;
+ *  - la liste des consultations en cours (10 annonces par page) ;
  *  - la page de détail d'une consultation.
+ *
+ * Il ne contient pas de code de lecture : seulement des RÈGLES (voir
+ * ../lecture.js), avec plusieurs règles de secours par champ. Si le portail
+ * change, on les corrige dans Paramètres → Sources de marchés, sans toucher au
+ * code ; celles-ci restent les règles par défaut.
  *
  * Limites voulues :
  *  - une seule page de liste par passage : les pages suivantes s'obtiennent en
  *    rejouant le formulaire du site, ce qu'on ne fait pas ;
- *  - aucun téléchargement de dossier de consultation (il passe par un
- *    formulaire de demande) : seuls les liens sont montrés ;
+ *  - aucun téléchargement de dossier de consultation : seuls les liens ;
  *  - une source PMMP est créée DÉSACTIVÉE : la collecte automatique n'est ni
  *    autorisée ni interdite par les conditions du site, l'activer est une
  *    décision à prendre après accord de l'éditeur du portail.
  */
-import { parse } from 'node-html-parser';
+import { lireDetail, lireListe } from '../lecture.js';
 
 export const ADRESSE_LISTE = 'https://www.marchespublics.gov.ma/index.php?page=entreprise.EntrepriseAdvancedSearch&AllCons';
 const BASE = 'https://www.marchespublics.gov.ma/';
-const PREFIXE_DETAIL = 'ctl0_CONTENU_PAGE_idEntrepriseConsultationSummary_';
+const D = '#ctl0_CONTENU_PAGE_idEntrepriseConsultationSummary_';
+const DATE = '(\\d{2}\\/\\d{2}\\/\\d{4})';
 
-/** Le texte d'un nœud, les <br> devenus des espaces. */
-const lire = (noeud) => (noeud ? noeud.innerHTML.replace(/<br\s*\/?>/gi, ' ') : null);
-const nettoyer = (html) =>
-  html
-    ? parse(`<div>${html}</div>`)
-        .text.replace(/\s+/g, ' ')
-        .trim()
-    : null;
+/** Les règles par défaut du portail (observées en octobre 2026). */
+export const REGLES_PMMP = {
+  format: 'html',
+  liste: {
+    decoupage: { repere: '_refCons"', debut: '<tr' },
+    champs: {
+      _ref: ['css:input[id$="_refCons"]@value', 'regex:refConsultation=(\\d+)'],
+      _org: ['css:input[id$="_orgCons"]@value', 'regex:orgAcc?ronyme=(\\w+)'],
+      idExterne: ['modele:pmmp-{_org}-{_ref}'],
+      urlOfficielle: [`modele:${BASE}index.php?page=entreprise.EntrepriseDetailsConsultation&refConsultation={_ref}&orgAcronyme={_org}`],
+      reference: ['css:span.ref', 'etiquette:Référence'],
+      objet: ['css:div[id$="_infosBullesObjet"]', 'css:div[id$="_panelBlocObjet"] | sans:^Objet\\s*:\\s*', 'etiquette:Objet'],
+      acheteur: ['css:div[id$="_panelBlocDenomination"] | sans:^Acheteur public\\s*:\\s*', 'etiquette:Acheteur public'],
+      procedure: ['css:div[id$="_type_procedure"]', 'etiquette:Procédure'],
+      categorie: ['css:div[id$="_panelBlocCategorie"]', 'etiquette:Catégorie'],
+      lieu: ['css:div[id$="_infosLieuExecution"]', 'css:div[id$="_panelBlocLieuxExec"]', 'etiquette:Lieu d’exécution', "etiquette:Lieu d'exécution"],
+      // La date de publication suit la catégorie ; à défaut, c'est la première date de la ligne.
+      datePublication: [`regex:panelBlocCategorie"[^>]*>[\\s\\S]*?<\\/div>\\s*<div>\\s*${DATE}`, `regex:${DATE}`],
+      // La date limite est dans « cloture-line » ; à défaut, la première date suivie d'une heure.
+      dateLimite: [`regex:class="cloture-line">\\s*${DATE}\\s*(?:<br\\s*\\/?>)?\\s*(\\d{2}:\\d{2})?`, `regex:${DATE}\\s*(?:<br\\s*\\/?>)?\\s*(\\d{2}:\\d{2})`],
+      reponseElectronique: ['regex:<img[^>]*alt="([^"]*)"[^>]*class="certificat"[^>]*style="display:\\s*;"', 'regex:<img[^>]*alt="([^"]*réponse électronique[^"]*)"'],
+      statutExterne: ['fixe:En cours'],
+    },
+  },
+  detail: {
+    champs: {
+      reference: [`css:${D}reference`, 'etiquette:Référence'],
+      objet: [`css:${D}objet`, 'etiquette:Objet'],
+      acheteur: [`css:${D}entiteAchat`, 'etiquette:Acheteur public'],
+      _type: [`css:${D}typeProcedure`],
+      _mode: [`css:${D}modePassation | sans:^\\|\\s*`],
+      procedure: ['modele:{_type} — {_mode}', 'modele:{_type}', 'etiquette:Procédure'],
+      categorie: [`css:${D}categoriePrincipale`, 'etiquette:Catégorie principale'],
+      domaines: [`css:${D}domainesActivite`, 'etiquette:Domaines d’activité', "etiquette:Domaines d'activité"],
+      lieu: [`css:${D}lieuxExecutions`, 'etiquette:Lieu d’exécution', "etiquette:Lieu d'exécution"],
+      dateLimite: [`css:${D}dateHeureLimiteRemisePlis`, 'etiquette:Date et heure limite de remise des plis', `texte:limite[^0-9]{0,40}${DATE}\\s+(\\d{2}:\\d{2})`],
+      estimation: ['texte:Estimation[^:]*?:\\s*([\\d\\s.,]+\\d)'],
+      caution: [`css:${D}cautionProvisoire`, 'etiquette:Caution provisoire'],
+      lots: [`css:${D}linkDetailLots`],
+      reponseElectronique: ["texte:(La réponse électronique (?:n’|n')?est[^.]*\\.)"],
+      documents: ['documents:EntrepriseDownloadAvis|EntrepriseDemandeTelechargementDce|EntrepriseDownloadReglement'],
+      statutExterne: [`css:${D}annonce`],
+    },
+  },
+};
+
+/** Les règles d'une source : les siennes si elle en a, sinon celles par défaut. */
+export const reglesDe = (source) => source?.parametres?.regles ?? REGLES_PMMP;
 
 /** Une adresse de consultation du portail ? Rend ses deux clés, ou null. */
 export function clesConsultation(adresse) {
@@ -46,63 +91,14 @@ export function clesConsultation(adresse) {
 /** L'adresse publique et stable d'une consultation. */
 export const adresseDetail = ({ ref, org }) => `${BASE}index.php?page=entreprise.EntrepriseDetailsConsultation&refConsultation=${encodeURIComponent(ref)}&orgAcronyme=${encodeURIComponent(org)}`;
 
-/**
- * Les lignes d'annonce de la page de liste, une à une : { brut, racine }.
- *
- * Le HTML réel du portail est mal formé : analysé d'un bloc, le tableau des
- * résultats se perd. On découpe donc d'abord la page autour de chaque repère
- * « _refCons » (une annonce = une ligne <tr>), puis on analyse chaque morceau
- * à part, comme un simple bloc (ses <tr>/<td> sont trop mal fermés).
- */
-function lignesDuTableau(html) {
-  const debuts = [];
-  for (const m of html.matchAll(/_refCons"/g)) {
-    const debut = html.lastIndexOf('<tr', m.index);
-    if (debut >= 0 && debut !== debuts.at(-1)) debuts.push(debut);
-  }
-  return debuts.map((debut, i) => {
-    const finTableau = html.indexOf('</tbody>', debut);
-    const brut = html.slice(debut, debuts[i + 1] ?? (finTableau > 0 ? finTableau : html.length));
-    return { brut, racine: parse(`<div>${brut.replace(/<\/?(?:tr|tbody|table)\b[^>]*>/gi, '').replace(/<(\/?)td\b/gi, '<$1div')}</div>`) };
-  });
+/** La page de liste → les offres qu'elle montre (et la qualité de la lecture). */
+export function lireListePmmp(html, regles = REGLES_PMMP) {
+  const { offres, qualite } = lireListe(html, regles, { base: BASE });
+  return { offres: offres.filter((o) => o.idExterne), qualite };
 }
 
-/**
- * La page de liste → les offres qu'elle montre.
- *
- * @param {string} html
- * @returns {object[]} des offres brutes (à normaliser)
- */
-export function analyserListe(html) {
-  const offres = [];
-  for (const { brut, racine: ligne } of lignesDuTableau(html)) {
-    const ref = ligne.querySelector('input[id$="_refCons"]')?.getAttribute('value');
-    const org = ligne.querySelector('input[id$="_orgCons"]')?.getAttribute('value');
-    if (!ref || !org) continue;
-    // Les dates se lisent dans le texte brut : la date de publication suit la catégorie, la date limite est dans « cloture-line ».
-    const publication = /panelBlocCategorie"[^>]*>[\s\S]*?<\/div>\s*<div>\s*(\d{2}\/\d{2}\/\d{4})/.exec(brut)?.[1] ?? null;
-    const limite = /class="cloture-line">\s*(\d{2}\/\d{2}\/\d{4})\s*(?:<br\s*\/?>)?\s*(\d{2}:\d{2})?/.exec(brut);
-    const objet = nettoyer(lire(ligne.querySelector('div[id$="_infosBullesObjet"]'))) ?? nettoyer(lire(ligne.querySelector('div[id$="_panelBlocObjet"]')))?.replace(/^Objet\s*:\s*/, '');
-    const acheteur = nettoyer(lire(ligne.querySelector('div[id$="_panelBlocDenomination"]')))?.replace(/^Acheteur public\s*:\s*/, '');
-    const lieu = nettoyer(lire(ligne.querySelector('div[id$="_infosLieuExecution"]'))) ?? nettoyer(lire(ligne.querySelector('div[id$="_panelBlocLieuxExec"]')));
-    const reponse = ligne.querySelectorAll('img.certificat').find((i) => !/display:\s*none/i.test(i.getAttribute('style') ?? ''));
-    offres.push({
-      idExterne: `pmmp-${org}-${ref}`,
-      urlOfficielle: adresseDetail({ ref, org }),
-      reference: nettoyer(lire(ligne.querySelector('span.ref'))),
-      objet,
-      acheteur,
-      procedure: nettoyer(lire(ligne.querySelector('div[id$="_type_procedure"]'))),
-      categorie: nettoyer(lire(ligne.querySelector('div[id$="_panelBlocCategorie"]'))),
-      lieu,
-      datePublication: publication,
-      dateLimite: limite ? `${limite[1]}${limite[2] ? ` ${limite[2]}` : ''}` : null,
-      reponseElectronique: reponse?.getAttribute('alt') ?? null,
-      statutExterne: 'En cours',
-    });
-  }
-  return offres;
-}
+/** La page de liste → les offres (raccourci). */
+export const analyserListe = (html, regles) => lireListePmmp(html, regles).offres;
 
 /** Le nombre total d'annonces annoncé par la page (pour le compte rendu). */
 export function totalAnnonce(html) {
@@ -110,42 +106,13 @@ export function totalAnnonce(html) {
   return n ? Number(n.replace(/\s/g, '')) : null;
 }
 
-/**
- * La page de détail d'une consultation → une offre complète.
- *
- * @param {string} html
- * @param {string} adresse l'adresse lue (pour l'identité et les liens)
- */
-export function analyserDetail(html, adresse) {
-  const racine = parse(html);
-  const champ = (nom) => nettoyer(lire(racine.querySelector(`#${PREFIXE_DETAIL}${nom}`)));
-  const plat = racine.text.replace(/\s+/g, ' ');
+/** La page de détail d'une consultation → une offre complète. */
+export function analyserDetail(html, adresse, regles = REGLES_PMMP) {
   const cles = clesConsultation(adresse);
-  const lots = champ('linkDetailLots');
-  const documents = [];
-  for (const a of racine.querySelectorAll('a')) {
-    const href = a.getAttribute('href') ?? '';
-    if (!/EntrepriseDownloadAvis|EntrepriseDemandeTelechargementDce|EntrepriseDownloadReglement/i.test(href)) continue;
-    const nom = nettoyer(lire(a)) || (/Avis/i.test(href) ? 'Avis de publicité' : 'Dossier de consultation');
-    documents.push({ nom, url: new URL(href.replace(/&amp;/g, '&'), BASE).toString() });
-  }
   return {
+    ...lireDetail(html, regles, { base: BASE }),
     idExterne: cles ? `pmmp-${cles.org}-${cles.ref}` : null,
     urlOfficielle: cles ? adresseDetail(cles) : adresse,
-    reference: champ('reference'),
-    objet: champ('objet'),
-    acheteur: champ('entiteAchat'),
-    procedure: [champ('typeProcedure'), champ('modePassation')?.replace(/^\|\s*/, '')].filter(Boolean).join(' — ') || null,
-    categorie: champ('categoriePrincipale'),
-    domaines: champ('domainesActivite') ? [champ('domainesActivite')] : [],
-    lieu: champ('lieuxExecutions'),
-    dateLimite: champ('dateHeureLimiteRemisePlis'),
-    estimation: /Estimation[^:]*?:\s*([\d\s .,]+\d)/.exec(plat)?.[1] ?? null,
-    caution: champ('cautionProvisoire'),
-    lots: lots ? [lots] : null,
-    reponseElectronique: /La réponse électronique (?:n’|n')?est[^.]*\./.exec(plat)?.[0] ?? null,
-    documents,
-    statutExterne: champ('annonce'),
   };
 }
 
@@ -157,23 +124,21 @@ export const connecteurPmmp = {
 
   /** Les annonces récentes : une page de liste, publique. */
   async lister({ source, recuperer }) {
+    const regles = reglesDe(source);
     const { texte } = await recuperer(source.adresse || ADRESSE_LISTE);
-    const offres = analyserListe(texte);
-    if (!offres.length && !/table-results/.test(texte)) {
-      throw new Error('La page reçue ne ressemble plus à la liste des consultations : le portail a peut-être changé.');
-    }
+    const { offres, qualite } = lireListePmmp(texte, regles);
     const remarques = [];
     if (source.pagesMax > 1) remarques.push('une seule page lue : le portail pagine par formulaire, que ce connecteur ne rejoue pas');
-    return { offres, pagesLues: 1, total: totalAnnonce(texte), remarques };
+    return { offres, pagesLues: 1, total: totalAnnonce(texte), remarques, qualite, regles };
   },
 
   /** Le détail d'une annonce, pour l'actualiser ou l'importer par son adresse. */
-  async detail({ adresse, recuperer }) {
+  async detail({ adresse, recuperer, source }) {
     const cles = clesConsultation(adresse);
     if (!cles) throw new Error('Ce n’est pas l’adresse d’une consultation du portail.');
     const { texte } = await recuperer(adresseDetail(cles));
-    const offre = analyserDetail(texte, adresseDetail(cles));
-    if (!offre.objet) throw new Error('Annonce introuvable ou page inattendue.');
+    const offre = analyserDetail(texte, adresseDetail(cles), reglesDe(source));
+    if (!offre.objet) throw new Error('Annonce introuvable, ou la page a changé : vérifiez les règles de lecture de la page de détail.');
     return offre;
   },
 };

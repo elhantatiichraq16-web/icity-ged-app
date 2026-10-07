@@ -109,9 +109,9 @@ export function normaliserOffre(brute) {
     dateLimite: date(brute.dateLimite, { finDeJournee: true }),
     estimation: montant(brute.estimation),
     caution: montant(brute.caution),
-    lots: (Array.isArray(brute.lots) ? brute.lots.map((l) => texte(l, 500)).filter(Boolean) : []).slice(0, 50),
+    lots: (Array.isArray(brute.lots) ? brute.lots : brute.lots ? [brute.lots] : []).map((l) => texte(l, 500)).filter(Boolean).slice(0, 50),
     reponseElectronique: texte(brute.reponseElectronique, 120),
-    documents: (brute.documents ?? []).map((d) => ({ nom: texte(d.nom, 255) ?? 'Document', url: lien(d.url) })).filter((d) => d.url),
+    documents: (Array.isArray(brute.documents) ? brute.documents : []).map((d) => ({ nom: texte(d.nom, 255) ?? 'Document', url: lien(d.url) })).filter((d) => d.url),
     statutExterne: texte(brute.statutExterne, 60),
   };
   // Sans identifiant fourni par la source, une empreinte stable : la même annonce donne toujours la même.

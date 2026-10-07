@@ -1,0 +1,7 @@
+{
+  "total": 2,
+  "data": [
+    { "id": "A-2026-101", "reference": "101/2026", "intitule": "Déploiement d'une plateforme IoT de gestion de l'éclairage public", "acheteur": { "nom": "Commune d'Exemple" }, "categorie": "Services", "lieu": "Oujda", "date_publication": "2026-10-02", "date_limite": "2026-11-30T10:00", "estimation": 950000, "url": "https://api.exemple.ma/avis/A-2026-101" },
+    { "id": "A-2026-102", "reference": "102/2026", "intitule": "Entretien des espaces verts", "acheteur": { "nom": "Agence d'Exemple" }, "categorie": "Services", "lieu": "Oujda", "date_publication": "2026-10-03", "date_limite": "2026-11-15", "url": "https://api.exemple.ma/avis/A-2026-102" }
+  ]
+}

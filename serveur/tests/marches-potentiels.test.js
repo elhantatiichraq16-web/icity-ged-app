@@ -9,7 +9,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../src/db.js';
-import { analyserDetail, analyserListe, ADRESSE_LISTE } from '../src/services/veille/connecteurs/pmmp.js';
+import { analyserDetail, analyserListe, ADRESSE_LISTE, lireListePmmp, REGLES_PMMP } from '../src/services/veille/connecteurs/pmmp.js';
+import * as lecture from '../src/services/veille/lecture.js';
 import { analyserFlux } from '../src/services/veille/connecteurs/rss.js';
 import { analyserCsv } from '../src/services/veille/connecteurs/csv.js';
 import { normaliserOffre } from '../src/services/veille/normalisation.js';
@@ -287,5 +288,95 @@ describe('import CSV', () => {
     expect(csv01.dateLimite.toISOString()).toBe('2026-11-28T11:00:00.000Z');
     expect((await envoyer()).json()).toMatchObject({ nouvelles: 0, misesAJour: 2 });
     expect(await db.offrePotentielle.count({ where: { sourceId: manuelle.id } })).toBe(2);
+  });
+});
+
+describe('règles de lecture (sans modifier le code)', () => {
+  const { lireListe, verifierRegles, lireRegle, diagnostic } = lecture;
+
+  it('chaque sorte de règle, et la règle de secours quand la première échoue', () => {
+    const html = `<div class="annonce" data-id="77"><h2 id="x_titre">Plateforme IoT</h2><p>Acheteur public : Commune d'Exemple</p>
+      <p>Date limite : 20/11/2026 à 10:00</p><a href="/avis/77.pdf">Avis</a><span class="montant">Estimation : 1 200 000,00 DH</span></div>`;
+    const champs = {
+      _id: ['css:div.annonce@data-id'],
+      idExterne: ['modele:ex-{_id}'],
+      objet: ['css:#n_existe_pas', 'css:h2'],
+      acheteur: ['etiquette:Acheteur public'],
+      dateLimite: ['regex:(\\d{2}/\\d{2}/\\d{4}) à (\\d{2}:\\d{2})'],
+      estimation: ['texte:Estimation\\s*:\\s*([\\d\\s,]+\\d)'],
+      reference: ['modele:{_absent}', 'fixe:SANS-REF'],
+      lieu: ['css:span.montant | garder:(\\d[\\d ]+\\d)'],
+      documents: ['documents:\\.pdf$'],
+    };
+    const { offres, qualite } = lireListe(html, { format: 'html', liste: { decoupage: { css: 'div.annonce' }, champs } }, { base: 'https://avis.exemple.ma/' });
+    expect(offres[0]).toMatchObject({ idExterne: 'ex-77', objet: 'Plateforme IoT', acheteur: "Commune d'Exemple", dateLimite: '20/11/2026 10:00', estimation: '1 200 000,00', reference: 'SANS-REF', lieu: '1 200 000' });
+    expect(offres[0].documents).toEqual([{ nom: 'Avis', url: 'https://avis.exemple.ma/avis/77.pdf' }]);
+    expect(qualite.secours).toMatchObject({ objet: 1, reference: 1 });
+  });
+
+  it('refuse les règles mal écrites, avec une raison par règle', () => {
+    expect(verifierRegles({ format: 'html', liste: { decoupage: { css: 'tr' }, champs: { objet: ['css:h2'] } } })).toEqual([]);
+    const problemes = verifierRegles({ format: 'html', liste: { decoupage: {}, champs: { objet: ['xpath://h2'], dateLimite: ['regex:(\\d{2}'], couleur: ['fixe:bleu'], lieu: ['css:h2 | couper:x'] } } }).join(' ');
+    expect(problemes).toMatch(/repère ou un sélecteur/);
+    expect(problemes).toMatch(/Règle inconnue/);
+    expect(problemes).toMatch(/Motif invalide/);
+    expect(problemes).toMatch(/Champ inconnu : « couleur »/);
+    expect(problemes).toMatch(/Filtre inconnu/);
+    expect(() => lireRegle(`regex:${'a'.repeat(500)}`)).toThrow(/trop long/);
+  });
+
+  it('le site renomme ses éléments : les règles de secours lisent quand même la page', () => {
+    const renomme = LISTE.replaceAll('_infosBullesObjet', '_bulleNouvelle').replaceAll('_panelBlocObjet', '_blocNouveau').replaceAll('_panelBlocDenomination', '_acheteurNouveau').replaceAll('cloture-line', 'fin-depot');
+    const { offres, qualite } = lireListePmmp(renomme);
+    expect(offres).toHaveLength(3);
+    expect(offres[0]).toMatchObject({ objet: expect.stringMatching(/^Mise en place d'une plateforme Smart City/), acheteur: "COMMUNE D'EXEMPLE", dateLimite: '20/11/2026 10:00' });
+    // La 3e annonce n'affiche son objet que dans l'élément renommé (pas d'étiquette « Objet : ») : elle seule est perdue.
+    expect(qualite).toMatchObject({ blocs: 3, offres: 2, parChamp: { objet: 2, acheteur: 3, dateLimite: 3 }, secours: { objet: 2, acheteur: 3, dateLimite: 3 } });
+    expect(diagnostic(qualite, REGLES_PMMP)).toBeNull();
+  });
+
+  it('une page devenue illisible : source « à vérifier », la direction prévenue une seule fois, puis corrigée dans les règles', async () => {
+    const directeur = await creerUtilisateur('directeur');
+    await creerUtilisateur('commercial_ao');
+    await db.sourceMarches.update({ where: { id: pmmp.id }, data: { active: true } });
+    const casse = LISTE.replaceAll('_refCons', '_numeroConsultation');
+    const passer = (html) => synchroniserTout({ forcer: true, maintenant: MAINTENANT, recuperer: fauxRecuperer({ [ADRESSE_LISTE]: html }) });
+
+    expect((await passer(casse)).bilans[0]).toMatchObject({ etat: 'a_verifier', probleme: expect.stringMatching(/Aucune annonce trouvée/) });
+    await passer(casse);
+    const alertes = await db.notification.findMany({ where: { lien: '/parametres/sources' } });
+    expect(alertes.map((n) => n.utilisateurId)).toEqual([directeur.id]); // une seule fois, et seulement à qui gère les sources
+
+    // On corrige le repère dans l'écran (les réglages de la source), sans code.
+    const regles = structuredClone(REGLES_PMMP);
+    regles.liste.decoupage.repere = '_numeroConsultation"';
+    regles.liste.champs._ref = ['css:input[id$="_numeroConsultation"]@value'];
+    await db.sourceMarches.update({ where: { id: pmmp.id }, data: { parametres: { regles } } });
+    expect((await passer(casse)).bilans[0]).toMatchObject({ etat: 'ok', nouvelles: 3 });
+  });
+
+  it('une API JSON se branche par des règles, sans code', async () => {
+    const champs = { idExterne: ['json:id'], urlOfficielle: ['json:url'], reference: ['json:reference'], objet: ['json:intitule'], acheteur: ['json:acheteur.nom'], categorie: ['json:categorie'], lieu: ['json:lieu'], datePublication: ['json:date_publication'], dateLimite: ['json:date_limite'], estimation: ['json:estimation'] };
+    const api = await db.sourceMarches.create({
+      data: { nom: 'API d’exemple', siteWeb: 'https://api.exemple.ma', connecteur: 'api', adresse: 'https://api.exemple.ma/avis', active: true, parametres: { regles: { format: 'json', liste: { decoupage: { chemin: 'data' }, champs } } } },
+    });
+    const { bilans } = await synchroniserTout({ maintenant: MAINTENANT, recuperer: fauxRecuperer({ 'https://api.exemple.ma/avis': fixture('api.json') }) });
+    expect(bilans).toMatchObject([{ source: 'API d’exemple', etat: 'ok', nouvelles: 2 }]);
+    const iot = await db.offrePotentielle.findFirstOrThrow({ where: { sourceId: api.id, idExterne: 'A-2026-101' } });
+    expect(iot).toMatchObject({ acheteur: "Commune d'Exemple", lieu: 'Oujda' });
+    expect(Number(iot.estimation)).toBe(950000);
+    expect(iot.score).toBeGreaterThanOrEqual(25); // « IoT »
+  });
+
+  it('l’écran ne peut pas enregistrer des règles invalides ; l’essai et les règles par défaut restent à la direction', async () => {
+    const directeur = en(app, await connecter(app, (await creerUtilisateur('directeur')).email));
+    const commercial = en(app, await connecter(app, (await creerUtilisateur('commercial_ao')).email));
+    const corps = { nom: pmmp.nom, siteWeb: pmmp.siteWeb, connecteur: 'pmmp', adresse: pmmp.adresse, parametres: { regles: { format: 'html', liste: { decoupage: { repere: 'x' }, champs: { objet: ['regex:(('] } } } } };
+    const refus = await directeur('PATCH', `/api/sources-marches/${pmmp.id}`, corps);
+    expect(refus.statusCode).toBe(422);
+    expect(refus.json().erreurs.regles).toMatch(/Motif invalide/);
+    expect((await directeur('GET', '/api/sources-marches/regles-par-defaut')).json().pmmp.liste.decoupage.repere).toBe('_refCons"');
+    expect((await directeur('POST', '/api/sources-marches/essai', { connecteur: 'html', adresse: 'https://avis.exemple.ma', regles: { format: 'html', liste: { decoupage: {}, champs: {} } } })).json()).toMatchObject({ ok: false, message: expect.stringMatching(/repère ou un sélecteur/) });
+    expect((await commercial('POST', '/api/sources-marches/essai', { connecteur: 'pmmp' })).statusCode).toBe(403);
   });
 });

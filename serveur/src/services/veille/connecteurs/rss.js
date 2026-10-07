@@ -42,6 +42,7 @@ export const connecteurRss = {
     if (!source.adresse) throw new Error('Indiquez l’adresse du flux.');
     const { texte } = await recuperer(source.adresse, { accepte: 'application/rss+xml,application/atom+xml,application/xml;q=0.9,text/xml;q=0.8' });
     if (!/<(rss|feed|rdf:RDF)[\s>]/i.test(texte)) throw new Error('Cette adresse ne renvoie pas un flux RSS ou Atom.');
-    return { offres: analyserFlux(texte), pagesLues: 1, remarques: [] };
+    const offres = analyserFlux(texte);
+    return { offres, pagesLues: 1, remarques: [], qualite: { blocs: offres.length, offres: offres.filter((o) => o.objet).length, parChamp: {}, secours: {} } };
   },
 };

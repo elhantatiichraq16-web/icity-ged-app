@@ -34,8 +34,8 @@ export const STATUTS_OUVERTS = ['nouvelle', 'a_etudier', 'interessante', 'a_prep
 export const CONNECTEURS = [
   { code: 'pmmp', nom: 'Portail marocain des marchés publics (HTML)', automatique: true },
   { code: 'rss', nom: 'Flux RSS ou Atom', automatique: true },
-  { code: 'api', nom: 'API (JSON)', automatique: false },
-  { code: 'html', nom: 'Page HTML autorisée', automatique: false },
+  { code: 'api', nom: 'API (JSON), selon des règles de lecture', automatique: true },
+  { code: 'html', nom: 'Page HTML, selon des règles de lecture', automatique: true },
   { code: 'csv', nom: 'Fichier CSV', automatique: false },
   { code: 'manuel', nom: 'Saisie et import manuels', automatique: false },
 ];
