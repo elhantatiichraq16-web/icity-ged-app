@@ -16,7 +16,8 @@ import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
 
-export const AGENT = 'iCityGED-veille/1.0 (veille des appels d’offres ; usage interne)';
+// Un en-tête HTTP n'admet que de l'ASCII : ni accent ni apostrophe typographique.
+export const AGENT = 'iCityGED-veille/1.0 (veille des appels d offres; usage interne)';
 
 /** Une erreur de récupération, au message montrable à l'écran (jamais de secret). */
 export class ErreurRecuperation extends Error {}

@@ -15,7 +15,7 @@ import { analyserCsv } from '../src/services/veille/connecteurs/csv.js';
 import { normaliserOffre } from '../src/services/veille/normalisation.js';
 import { alerterNouvellesOffres, assurerInitialisation, enregistrerOffres, expirerOffres } from '../src/services/veille/offres.js';
 import { synchroniserTout } from '../src/services/veille/synchronisation.js';
-import { estAdressePrivee, verifierUrl } from '../src/services/veille/recuperation.js';
+import { AGENT, estAdressePrivee, verifierUrl } from '../src/services/veille/recuperation.js';
 import { connecter, creerUtilisateur, en, nouvelleApp, ORIGINE, viderBase } from './outils.js';
 
 const ICI = path.dirname(fileURLToPath(import.meta.url));
@@ -83,6 +83,13 @@ describe('connecteur PMMP (réponses enregistrées)', () => {
     expect(offres[0].datePublication.toISOString()).toBe('2026-10-01T00:00:00.000Z');
     // Avant le retour à GMT, la même écriture valait UTC+1.
     expect(normaliserOffre({ objet: 'x', dateLimite: '15/08/2026 10:00' }).dateLimite.toISOString()).toBe('2026-08-15T09:00:00.000Z');
+  });
+
+  it('résiste au HTML mal fermé du portail réel (lignes et cellules sans fermeture)', () => {
+    const malForme = LISTE.replace(/<\/(td|tr)>/g, '').replace('<tbody>', '<tbody><div>');
+    const offres = analyserListe(malForme).map(normaliserOffre);
+    expect(offres.map((o) => o.idExterne)).toEqual(['pmmp-x1a-900001', 'pmmp-y2b-900002', 'pmmp-x1a-900003']);
+    expect(offres.every((o) => o.dateLimite && o.datePublication && o.acheteur)).toBe(true);
   });
 
   it('lit une page de détail : estimation, caution, domaines, documents (sans lien piégé)', () => {
@@ -179,6 +186,8 @@ describe('sécurité des adresses (SSRF)', () => {
     }
     expect(verifierUrl('https://www.marchespublics.gov.ma/pmmp/').hostname).toBe('www.marchespublics.gov.ma');
     expect(verifierUrl('http://www.exemple.ma', { autoriserHttp: true }).protocol).toBe('http:');
+    // L'en-tête User-Agent doit rester en ASCII, sinon Node refuse toute requête réelle.
+    expect(AGENT).toMatch(/^[ -~]+$/);
     expect([estAdressePrivee('172.20.1.1'), estAdressePrivee('::ffff:127.0.0.1'), estAdressePrivee('fd00::1'), estAdressePrivee('8.8.8.8')]).toEqual([true, true, true, false]);
   });
 

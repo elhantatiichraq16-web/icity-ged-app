@@ -47,24 +47,44 @@ export function clesConsultation(adresse) {
 export const adresseDetail = ({ ref, org }) => `${BASE}index.php?page=entreprise.EntrepriseDetailsConsultation&refConsultation=${encodeURIComponent(ref)}&orgAcronyme=${encodeURIComponent(org)}`;
 
 /**
+ * Les lignes d'annonce de la page de liste, une à une : { brut, racine }.
+ *
+ * Le HTML réel du portail est mal formé : analysé d'un bloc, le tableau des
+ * résultats se perd. On découpe donc d'abord la page autour de chaque repère
+ * « _refCons » (une annonce = une ligne <tr>), puis on analyse chaque morceau
+ * à part, comme un simple bloc (ses <tr>/<td> sont trop mal fermés).
+ */
+function lignesDuTableau(html) {
+  const debuts = [];
+  for (const m of html.matchAll(/_refCons"/g)) {
+    const debut = html.lastIndexOf('<tr', m.index);
+    if (debut >= 0 && debut !== debuts.at(-1)) debuts.push(debut);
+  }
+  return debuts.map((debut, i) => {
+    const finTableau = html.indexOf('</tbody>', debut);
+    const brut = html.slice(debut, debuts[i + 1] ?? (finTableau > 0 ? finTableau : html.length));
+    return { brut, racine: parse(`<div>${brut.replace(/<\/?(?:tr|tbody|table)\b[^>]*>/gi, '').replace(/<(\/?)td\b/gi, '<$1div')}</div>`) };
+  });
+}
+
+/**
  * La page de liste → les offres qu'elle montre.
  *
  * @param {string} html
  * @returns {object[]} des offres brutes (à normaliser)
  */
 export function analyserListe(html) {
-  const racine = parse(html);
   const offres = [];
-  for (const ligne of racine.querySelectorAll('tr')) {
+  for (const { brut, racine: ligne } of lignesDuTableau(html)) {
     const ref = ligne.querySelector('input[id$="_refCons"]')?.getAttribute('value');
     const org = ligne.querySelector('input[id$="_orgCons"]')?.getAttribute('value');
     if (!ref || !org) continue;
-    const colonneRef = ligne.querySelector('td[headers="cons_ref"]');
-    const publication = /(\d{2}\/\d{2}\/\d{4})/.exec(nettoyer(lire(colonneRef)) ?? '')?.[1] ?? null;
+    // Les dates se lisent dans le texte brut : la date de publication suit la catégorie, la date limite est dans « cloture-line ».
+    const publication = /panelBlocCategorie"[^>]*>[\s\S]*?<\/div>\s*<div>\s*(\d{2}\/\d{2}\/\d{4})/.exec(brut)?.[1] ?? null;
+    const limite = /class="cloture-line">\s*(\d{2}\/\d{2}\/\d{4})\s*(?:<br\s*\/?>)?\s*(\d{2}:\d{2})?/.exec(brut);
     const objet = nettoyer(lire(ligne.querySelector('div[id$="_infosBullesObjet"]'))) ?? nettoyer(lire(ligne.querySelector('div[id$="_panelBlocObjet"]')))?.replace(/^Objet\s*:\s*/, '');
     const acheteur = nettoyer(lire(ligne.querySelector('div[id$="_panelBlocDenomination"]')))?.replace(/^Acheteur public\s*:\s*/, '');
     const lieu = nettoyer(lire(ligne.querySelector('div[id$="_infosLieuExecution"]'))) ?? nettoyer(lire(ligne.querySelector('div[id$="_panelBlocLieuxExec"]')));
-    const limite = nettoyer(lire(ligne.querySelector('td[headers="cons_dateEnd"] .cloture-line')));
     const reponse = ligne.querySelectorAll('img.certificat').find((i) => !/display:\s*none/i.test(i.getAttribute('style') ?? ''));
     offres.push({
       idExterne: `pmmp-${org}-${ref}`,
@@ -76,7 +96,7 @@ export function analyserListe(html) {
       categorie: nettoyer(lire(ligne.querySelector('div[id$="_panelBlocCategorie"]'))),
       lieu,
       datePublication: publication,
-      dateLimite: limite,
+      dateLimite: limite ? `${limite[1]}${limite[2] ? ` ${limite[2]}` : ''}` : null,
       reponseElectronique: reponse?.getAttribute('alt') ?? null,
       statutExterne: 'En cours',
     });
